@@ -32,3 +32,43 @@ jobs:
 
       - name: Test
         run: make test
+
+  test-race:
+    strategy:
+      matrix:
+        runs-on:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "~1.22"
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Test race
+        run: make test-race
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "~1.22"
+
+      - name: Format
+        run: make -B fmt
+
+      - name: Check for unstaged
+        run: ./scripts/check_unstaged.sh
