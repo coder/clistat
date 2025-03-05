@@ -37,11 +37,10 @@ jobs:
     strategy:
       matrix:
         runtime:
-          - sysbox-runc
           - runc
     runs-on: ubuntu-latest
     container:
-      image: golang:1.22
+      image: golang:1.23
       options: "--runtime=${{ matrix.runtime }}"
     steps:
       - name: Checkout
