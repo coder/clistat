@@ -41,6 +41,7 @@ jobs:
       matrix:
         runs-on:
           - windows-latest
+          - linux-arm64
           - ubuntu-latest
           - macos-latest
     runs-on: ${{ matrix.runs-on }}
@@ -64,9 +65,12 @@ jobs:
   test-container:
     strategy:
       matrix:
+        runs-on:
+          - linux-arm64
+          - ubuntu-latest
         runtime:
           - runc
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
     container:
       image: golang:1.23
       options: "--runtime=${{ matrix.runtime }}"
@@ -85,9 +89,12 @@ jobs:
   test-container-race:
     strategy:
       matrix:
+        runs-on:
+          - linux-arm64
+          - ubuntu-latest
         runtime:
           - runc
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
     container:
       image: golang:1.23
       options: "--runtime=${{ matrix.runtime }}"
