@@ -94,6 +94,21 @@ func TestStatter(t *testing.T) {
 		})
 	})
 
+	t.Run("RealMemory", func(t *testing.T) {
+		t.Parallel()
+
+		fs := afero.NewOsFs()
+		s, err := New(WithFS(fs))
+		require.NoError(t, err)
+
+		mem, err := s.HostMemory(PrefixDefault)
+		require.NoError(t, err)
+		assert.NotNil(t, mem)
+		assert.NotZero(t, mem.Used, "Memory usage should be non-zero")
+		assert.NotZero(t, mem.Total, "Total memory should be non-zero")
+		assert.True(t, *mem.Total > mem.Used, "Total memory should be greater than used memory")
+	})
+
 	// Sometimes we do need to "fake" some stuff
 	// that happens while we wait.
 	withWait := func(waitF func(time.Duration)) Option {
