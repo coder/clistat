@@ -33,7 +33,7 @@ jobs:
       - name: Test
         run: make test
         env:
-          CLISTAT_IS_CONTAINERIZED: "no"
+          CLISTAT_IS_CONTAINERIZED: "yes"
 
   test-race:
     strategy:
@@ -79,7 +79,7 @@ jobs:
       - name: Test
         run: make test
         env:
-          CLISTAT_IS_CONTAINERIZED: "yes"
+          CLISTAT_IS_CONTAINERIZED: "no"
 
   test-container-race:
     strategy:
