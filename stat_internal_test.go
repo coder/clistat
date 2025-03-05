@@ -315,20 +315,23 @@ func TestIsContainerized(t *testing.T) {
 			t.Skip("Skipping test - CLISTAT_IS_CONTAINERIZED is not set to 'yes'")
 		}
 
-		fs := afero.NewOsFs()
-		isContainer, err := IsContainerized(fs)
-		require.NoError(t, err)
-		assert.True(t, isContainer, "Expected to be detected as running in a container")
+		t.Run("IsContainerizedIsTrue", func(t *testing.T) {
+			fs := afero.NewOsFs()
+			isContainer, err := IsContainerized(fs)
+			require.NoError(t, err)
+			assert.True(t, isContainer, "Expected to be detected as running in a container")
+		})
 
 		t.Run("ContainerMemory", func(t *testing.T) {
 			t.Parallel()
 
+			fs := afero.NewOsFs()
 			s, err := New(WithFS(fs))
 			require.NoError(t, err)
 
 			mem, err := s.ContainerMemory(PrefixDefault)
 			require.NoError(t, err)
-			assert.NotNil(t, mem)
+			require.NotNil(t, mem)
 			assert.NotZero(t, mem.Used, "Container memory usage should be non-zero")
 			if mem.Total != nil {
 				assert.NotZero(t, *mem.Total, "Container total memory should be non-zero")
@@ -339,12 +342,13 @@ func TestIsContainerized(t *testing.T) {
 		t.Run("ContainerCPU", func(t *testing.T) {
 			t.Parallel()
 
+			fs := afero.NewOsFs()
 			s, err := New(WithFS(fs))
 			require.NoError(t, err)
 
 			cpu, err := s.ContainerCPU()
 			require.NoError(t, err)
-			assert.NotNil(t, cpu)
+			require.NotNil(t, cpu)
 			assert.NotZero(t, cpu.Used, "Container CPU usage should be non-zero")
 			if cpu.Total != nil {
 				assert.NotZero(t, *cpu.Total, "Container total CPU should be non-zero")
