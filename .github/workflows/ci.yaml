@@ -33,6 +33,26 @@ jobs:
       - name: Test
         run: make test
 
+  test-container:
+    strategy:
+      matrix:
+        runtime:
+          - sysbox-runc
+          - runc
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.22
+      options: "--runtime=${{ matrix.runtime }}"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Test
+        run: make test
+
   test-race:
     strategy:
       matrix:
