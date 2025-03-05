@@ -1,6 +1,7 @@
 package clistat
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -278,6 +279,33 @@ func TestStatter(t *testing.T) {
 
 func TestIsContainerized(t *testing.T) {
 	t.Parallel()
+
+	t.Run("NotInContainer", func(t *testing.T) {
+		t.Parallel()
+
+		if os.Getenv("CLISTAT_IS_CONTAINERIZED") != "no" {
+			t.Skip("Skipping test - CLISTAT_IS_CONTAINERIZED is not set to 'no'")
+		}
+
+		fs := afero.NewOsFs()
+		isContainer, err := IsContainerized(fs)
+		require.NoError(t, err)
+		assert.False(t, isContainer, "Expected to be detected as not running in a container")
+	})
+
+	t.Run("InContainer", func(t *testing.T) {
+		t.Parallel()
+
+		if os.Getenv("CLISTAT_IS_CONTAINERIZED") != "yes" {
+			t.Skip("Skipping test - CLISTAT_IS_CONTAINERIZED is not set to 'yes'")
+		}
+
+		// Use the real filesystem since we're in a container
+		fs := afero.NewOsFs()
+		isContainer, err := IsContainerized(fs)
+		require.NoError(t, err)
+		assert.True(t, isContainer, "Expected to be detected as running in a container")
+	})
 
 	for _, tt := range []struct {
 		Name     string

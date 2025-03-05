@@ -32,25 +32,8 @@ jobs:
 
       - name: Test
         run: make test
-
-  test-container:
-    strategy:
-      matrix:
-        runtime:
-          - runc
-    runs-on: ubuntu-latest
-    container:
-      image: golang:1.23
-      options: "--runtime=${{ matrix.runtime }}"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download Go modules
-        run: go mod download
-
-      - name: Test
-        run: make test
+        env:
+          CLISTAT_IS_CONTAINERIZED: "no"
 
   test-race:
     strategy:
@@ -74,6 +57,50 @@ jobs:
 
       - name: Test race
         run: make test-race
+        env:
+          CLISTAT_IS_CONTAINERIZED: "no"
+
+  test-container:
+    strategy:
+      matrix:
+        runtime:
+          - runc
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.23
+      options: "--runtime=${{ matrix.runtime }}"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Test
+        run: make test
+        env:
+          CLISTAT_IS_CONTAINERIZED: "yes"
+
+  test-container-race:
+    strategy:
+      matrix:
+        runtime:
+          - runc
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.23
+      options: "--runtime=${{ matrix.runtime }}"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Test race
+        run: make test-race
+        env:
+          CLISTAT_IS_CONTAINERIZED: "yes"
 
   fmt:
     runs-on: ubuntu-latest
