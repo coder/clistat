@@ -319,6 +319,38 @@ func TestIsContainerized(t *testing.T) {
 		isContainer, err := IsContainerized(fs)
 		require.NoError(t, err)
 		assert.True(t, isContainer, "Expected to be detected as running in a container")
+
+		t.Run("ContainerMemory", func(t *testing.T) {
+			t.Parallel()
+
+			s, err := New(WithFS(fs))
+			require.NoError(t, err)
+
+			mem, err := s.ContainerMemory(PrefixDefault)
+			require.NoError(t, err)
+			assert.NotNil(t, mem)
+			assert.NotZero(t, mem.Used, "Container memory usage should be non-zero")
+			if mem.Total != nil {
+				assert.NotZero(t, *mem.Total, "Container total memory should be non-zero")
+				assert.True(t, *mem.Total > mem.Used, "Container total memory should be greater than used memory")
+			}
+		})
+
+		t.Run("ContainerCPU", func(t *testing.T) {
+			t.Parallel()
+
+			s, err := New(WithFS(fs))
+			require.NoError(t, err)
+
+			cpu, err := s.ContainerCPU()
+			require.NoError(t, err)
+			assert.NotNil(t, cpu)
+			assert.NotZero(t, cpu.Used, "Container CPU usage should be non-zero")
+			if cpu.Total != nil {
+				assert.NotZero(t, *cpu.Total, "Container total CPU should be non-zero")
+				assert.True(t, *cpu.Total > cpu.Used, "Container total CPU should be greater than used CPU")
+			}
+		})
 	})
 
 	for _, tt := range []struct {
