@@ -300,7 +300,6 @@ func TestIsContainerized(t *testing.T) {
 			t.Skip("Skipping test - CLISTAT_IS_CONTAINERIZED is not set to 'yes'")
 		}
 
-		// Use the real filesystem since we're in a container
 		fs := afero.NewOsFs()
 		isContainer, err := IsContainerized(fs)
 		require.NoError(t, err)

@@ -15,6 +15,7 @@ jobs:
       matrix:
         runs-on:
           - windows-latest
+          - depot-ubuntu-24.04-arm
           - ubuntu-latest
           - macos-latest
     runs-on: ${{ matrix.runs-on }}
