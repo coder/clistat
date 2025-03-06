@@ -16,8 +16,8 @@ jobs:
         runs-on:
           - windows-latest
           - depot-ubuntu-24.04-arm
-          - ubuntu-latest
-          - macos-latest
+          - depot-ubuntu-24.04
+          - depot-macos-latest
     runs-on: ${{ matrix.runs-on }}
     steps:
       - name: Checkout
@@ -42,8 +42,8 @@ jobs:
         runs-on:
           - windows-latest
           - depot-ubuntu-24.04-arm
-          - ubuntu-latest
-          - macos-latest
+          - depot-ubuntu-24.04
+          - depot-macos-latest
     runs-on: ${{ matrix.runs-on }}
     steps:
       - name: Checkout
@@ -68,7 +68,8 @@ jobs:
         runs-on:
           - depot-ubuntu-22.04-arm
           - depot-ubuntu-24.04-arm
-          - ubuntu-latest
+          - depot-ubuntu-22.04
+          - depot-ubuntu-24.04
         runtime:
           - runc
     runs-on: ${{ matrix.runs-on }}
@@ -93,7 +94,8 @@ jobs:
         runs-on:
           - depot-ubuntu-22.04-arm
           - depot-ubuntu-24.04-arm
-          - ubuntu-latest
+          - depot-ubuntu-22.04
+          - depot-ubuntu-24.04
         runtime:
           - runc
     runs-on: ${{ matrix.runs-on }}
@@ -113,7 +115,7 @@ jobs:
           CLISTAT_IS_CONTAINERIZED: "yes"
 
   fmt:
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
