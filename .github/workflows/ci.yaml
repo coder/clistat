@@ -69,7 +69,7 @@ jobs:
         runtime:
           - runc
         options:
-          - "--memory=128MB"
+          - "--memory=1024MB"
           - "--cpus=1"
     runs-on: ${{ matrix.runs-on }}
     container:
@@ -100,7 +100,7 @@ jobs:
         runtime:
           - runc
         options:
-          - "--memory=128MB"
+          - "--memory=1024MB"
           - "--cpus=1"
     runs-on: ${{ matrix.runs-on }}
     container:
