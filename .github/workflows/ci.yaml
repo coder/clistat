@@ -33,8 +33,6 @@ jobs:
 
       - name: Test
         run: make test
-        env:
-          CLISTAT_IS_CONTAINERIZED: "no"
 
   test-race:
     strategy:
@@ -59,8 +57,6 @@ jobs:
 
       - name: Test race
         run: make test-race
-        env:
-          CLISTAT_IS_CONTAINERIZED: "no"
 
   test-container:
     strategy:
