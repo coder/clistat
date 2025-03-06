@@ -15,7 +15,7 @@ jobs:
       matrix:
         runs-on:
           - windows-latest
-          - linux-arm64
+          - depot-ubuntu-24.04-arm
           - ubuntu-latest
           - macos-latest
     runs-on: ${{ matrix.runs-on }}
@@ -41,7 +41,7 @@ jobs:
       matrix:
         runs-on:
           - windows-latest
-          - linux-arm64
+          - depot-ubuntu-24.04-arm
           - ubuntu-latest
           - macos-latest
     runs-on: ${{ matrix.runs-on }}
@@ -66,8 +66,8 @@ jobs:
     strategy:
       matrix:
         runs-on:
-          - linux-arm64
           - depot-ubuntu-22.04-arm
+          - depot-ubuntu-24.04-arm
           - ubuntu-latest
         runtime:
           - runc
@@ -91,8 +91,8 @@ jobs:
     strategy:
       matrix:
         runs-on:
-          - linux-arm64
           - depot-ubuntu-22.04-arm
+          - depot-ubuntu-24.04-arm
           - ubuntu-latest
         runtime:
           - runc
