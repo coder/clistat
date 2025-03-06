@@ -68,10 +68,13 @@ jobs:
           - depot-ubuntu-24.04
         runtime:
           - runc
+        options:
+          - "--memory=128MB"
+          - "--cpus=1"
     runs-on: ${{ matrix.runs-on }}
     container:
       image: golang:1.23
-      options: "--runtime=${{ matrix.runtime }}"
+      options: "--runtime=${{ matrix.runtime }} ${{ matrix.options }}"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -83,6 +86,8 @@ jobs:
         run: make test
         env:
           CLISTAT_IS_CONTAINERIZED: "yes"
+          CLISTAT_HAS_MEMORY_LIMIT: ${{ contains(matrix.options, '--memory=') && 'yes' || '' }}
+          CLISTAT_HAS_CPU_LIMIT: ${{ contains(matrix.options, '--cpus=') && 'yes' || '' }}
 
   test-container-race:
     strategy:
@@ -94,10 +99,13 @@ jobs:
           - depot-ubuntu-24.04
         runtime:
           - runc
+        options:
+          - "--memory=128MB"
+          - "--cpus=1"
     runs-on: ${{ matrix.runs-on }}
     container:
       image: golang:1.23
-      options: "--runtime=${{ matrix.runtime }}"
+      options: "--runtime=${{ matrix.runtime }} ${{ matrix.options }}"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -109,6 +117,8 @@ jobs:
         run: make test-race
         env:
           CLISTAT_IS_CONTAINERIZED: "yes"
+          CLISTAT_HAS_MEMORY_LIMIT: ${{ contains(matrix.options, '--memory=') && 'yes' || '' }}
+          CLISTAT_HAS_CPU_LIMIT: ${{ contains(matrix.options, '--cpus=') && 'yes' || '' }}
 
   fmt:
     runs-on: depot-ubuntu-latest

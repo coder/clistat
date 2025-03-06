@@ -327,9 +327,14 @@ func TestIsContainerized(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, mem)
 			assert.NotZero(t, mem.Used, "Container memory usage should be non-zero")
-			if mem.Total != nil {
+
+			hasMemoryLimit := os.Getenv("CLISTAT_HAS_MEMORY_LIMIT") == "yes"
+			if hasMemoryLimit {
+				require.NotNil(t, mem.Total, "Container should have memory limit")
 				assert.NotZero(t, *mem.Total, "Container total memory should be non-zero")
 				assert.True(t, *mem.Total > mem.Used, "Container total memory should be greater than used memory")
+			} else {
+				assert.Nil(t, mem.Total, "Container should not have memory limit")
 			}
 		})
 
@@ -344,9 +349,14 @@ func TestIsContainerized(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, cpu)
 			assert.NotZero(t, cpu.Used, "Container CPU usage should be non-zero")
-			if cpu.Total != nil {
+
+			hasCPULimit := os.Getenv("CLISTAT_HAS_CPU_LIMIT") == "yes"
+			if hasCPULimit {
+				require.NotNil(t, cpu.Total, "Container should have CPU limit")
 				assert.NotZero(t, *cpu.Total, "Container total CPU should be non-zero")
 				assert.True(t, *cpu.Total > cpu.Used, "Container total CPU should be greater than used CPU")
+			} else {
+				assert.Nil(t, cpu.Total, "Container should not have CPU limit")
 			}
 		})
 	})
