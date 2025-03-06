@@ -15,8 +15,9 @@ jobs:
       matrix:
         runs-on:
           - windows-latest
-          - ubuntu-latest
-          - macos-latest
+          - depot-ubuntu-24.04-arm
+          - depot-ubuntu-24.04
+          - depot-macos-latest
     runs-on: ${{ matrix.runs-on }}
     steps:
       - name: Checkout
@@ -38,8 +39,9 @@ jobs:
       matrix:
         runs-on:
           - windows-latest
-          - ubuntu-latest
-          - macos-latest
+          - depot-ubuntu-24.04-arm
+          - depot-ubuntu-24.04
+          - depot-macos-latest
     runs-on: ${{ matrix.runs-on }}
     steps:
       - name: Checkout
@@ -56,8 +58,70 @@ jobs:
       - name: Test race
         run: make test-race
 
+  test-container:
+    strategy:
+      matrix:
+        runs-on:
+          - depot-ubuntu-22.04-arm
+          - depot-ubuntu-24.04-arm
+          - depot-ubuntu-22.04
+          - depot-ubuntu-24.04
+        runtime:
+          - runc
+        options:
+          - "--memory=1024MB"
+          - "--cpus=1"
+    runs-on: ${{ matrix.runs-on }}
+    container:
+      image: golang:1.23
+      options: "--runtime=${{ matrix.runtime }} ${{ matrix.options }}"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Test
+        run: make test
+        env:
+          CLISTAT_IS_CONTAINERIZED: "yes"
+          CLISTAT_HAS_MEMORY_LIMIT: ${{ contains(matrix.options, '--memory=') && 'yes' || '' }}
+          CLISTAT_HAS_CPU_LIMIT: ${{ contains(matrix.options, '--cpus=') && 'yes' || '' }}
+
+  test-container-race:
+    strategy:
+      matrix:
+        runs-on:
+          - depot-ubuntu-22.04-arm
+          - depot-ubuntu-24.04-arm
+          - depot-ubuntu-22.04
+          - depot-ubuntu-24.04
+        runtime:
+          - runc
+        options:
+          - "--memory=1024MB"
+          - "--cpus=1"
+    runs-on: ${{ matrix.runs-on }}
+    container:
+      image: golang:1.23
+      options: "--runtime=${{ matrix.runtime }} ${{ matrix.options }}"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Test race
+        run: make test-race
+        env:
+          CLISTAT_IS_CONTAINERIZED: "yes"
+          CLISTAT_HAS_MEMORY_LIMIT: ${{ contains(matrix.options, '--memory=') && 'yes' || '' }}
+          CLISTAT_HAS_CPU_LIMIT: ${{ contains(matrix.options, '--cpus=') && 'yes' || '' }}
+
   fmt:
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4

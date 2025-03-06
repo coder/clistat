@@ -1,6 +1,7 @@
 package clistat
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -91,6 +92,21 @@ func TestStatter(t *testing.T) {
 			assert.NotZero(t, disk.Total)
 			assert.Equal(t, "B", disk.Unit)
 		})
+	})
+
+	t.Run("RealMemory", func(t *testing.T) {
+		t.Parallel()
+
+		fs := afero.NewOsFs()
+		s, err := New(WithFS(fs))
+		require.NoError(t, err)
+
+		mem, err := s.HostMemory(PrefixDefault)
+		require.NoError(t, err)
+		assert.NotNil(t, mem)
+		assert.NotZero(t, mem.Used, "Memory usage should be non-zero")
+		assert.NotZero(t, mem.Total, "Total memory should be non-zero")
+		assert.True(t, *mem.Total > mem.Used, "Total memory should be greater than used memory")
 	})
 
 	// Sometimes we do need to "fake" some stuff
@@ -278,6 +294,72 @@ func TestStatter(t *testing.T) {
 
 func TestIsContainerized(t *testing.T) {
 	t.Parallel()
+
+	t.Run("IsCorrectlyDetected", func(t *testing.T) {
+		t.Parallel()
+
+		fs := afero.NewOsFs()
+		isContainer, err := IsContainerized(fs)
+		require.NoError(t, err)
+
+		if os.Getenv("CLISTAT_IS_CONTAINERIZED") == "yes" {
+			assert.True(t, isContainer, "Expected to be detected as running in a container")
+		} else {
+			assert.False(t, isContainer, "Expected to be detected as not running in a container")
+		}
+	})
+
+	t.Run("InContainer", func(t *testing.T) {
+		t.Parallel()
+
+		if os.Getenv("CLISTAT_IS_CONTAINERIZED") != "yes" {
+			t.Skip("Skipping test - CLISTAT_IS_CONTAINERIZED is not set to 'yes'")
+		}
+
+		t.Run("ContainerMemory", func(t *testing.T) {
+			t.Parallel()
+
+			fs := afero.NewOsFs()
+			s, err := New(WithFS(fs))
+			require.NoError(t, err)
+
+			mem, err := s.ContainerMemory(PrefixDefault)
+			require.NoError(t, err)
+			require.NotNil(t, mem)
+			assert.NotZero(t, mem.Used, "Container memory usage should be non-zero")
+
+			hasMemoryLimit := os.Getenv("CLISTAT_HAS_MEMORY_LIMIT") == "yes"
+			if hasMemoryLimit {
+				require.NotNil(t, mem.Total, "Container should have memory limit")
+				assert.NotZero(t, *mem.Total, "Container total memory should be non-zero")
+				assert.True(t, *mem.Total > mem.Used, "Container total memory should be greater than used memory")
+			} else {
+				assert.Nil(t, mem.Total, "Container should not have memory limit")
+			}
+		})
+
+		t.Run("ContainerCPU", func(t *testing.T) {
+			t.Parallel()
+
+			fs := afero.NewOsFs()
+			s, err := New(WithFS(fs))
+			require.NoError(t, err)
+
+			cpu, err := s.ContainerCPU()
+			require.NoError(t, err)
+			require.NotNil(t, cpu)
+			assert.NotZero(t, cpu.Used, "Container CPU usage should be non-zero")
+
+			hasCPULimit := os.Getenv("CLISTAT_HAS_CPU_LIMIT") == "yes"
+			if hasCPULimit {
+				require.NotNil(t, cpu.Total, "Container should have CPU limit")
+				assert.NotZero(t, *cpu.Total, "Container total CPU should be non-zero")
+				assert.True(t, *cpu.Total > cpu.Used, "Container total CPU should be greater than used CPU")
+			} else {
+				assert.Nil(t, cpu.Total, "Container should not have CPU limit")
+			}
+		})
+	})
 
 	for _, tt := range []struct {
 		Name     string
