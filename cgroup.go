@@ -58,6 +58,7 @@ const (
 
 	// 0x63677270 (ascii for 'cgrp') is the magic number for identifying a cgroup v2
 	// filesystem.
+	// Ref: https://docs.kernel.org/admin-guide/cgroup-v2.html#mounting
 	cgroupV2MagicNumber = 0x63677270
 )
 
