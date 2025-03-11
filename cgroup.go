@@ -128,6 +128,23 @@ func (s *Statter) cGroupCPUUsed() (used float64, err error) {
 	return s.cGroupV1CPUUsed()
 }
 
+func (s *Statter) isCGroupV2() bool {
+	// If the underlying file system is an `OsFs`, then we will
+	// make a `statfs` syscall to figure out if the filesystem
+	// is cgroup v2 or not. This is unfortunately required as
+	// afero doesn't implement this syscall functionality for us.
+	if _, ok := s.fs.(*afero.OsFs); ok {
+		return isCGroupV2(cgroupPath)
+	}
+
+	// As a fall back, we will for the presence of /sys/fs/cgroup/cpu.max
+	// NOTE(DanielleMaywood):
+	// There is no requirement that a cgroup v2 file system will contain
+	// this file, meaning this isn't completely foolproof.
+	_, err := s.fs.Stat(cgroupV2CPUMax)
+	return err == nil
+}
+
 func (s *Statter) cGroupV2CPUUsed() (used float64, err error) {
 	usageUs, err := readInt64Prefix(s.fs, cgroupV2CPUStat, "usage_usec")
 	if err != nil {
