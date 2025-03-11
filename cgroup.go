@@ -30,7 +30,11 @@ type cgroupStatter interface {
 	memory(p Prefix) (*Result, error)
 }
 
-func (s *Statter) getCGroupSatter() cgroupStatter {
+func (s *Statter) getCGroupStatter() cgroupStatter {
+	if ok, err := IsContainerized(s.fs); err != nil || !ok {
+		return nil
+	}
+
 	if s.isCGroupV2() {
 		return &cgroupV2Statter{fs: s.fs}
 	}
@@ -47,12 +51,7 @@ func (s *Statter) getCGroupSatter() cgroupStatter {
 // If the system is not containerized, this always returns nil.
 func (s *Statter) ContainerCPU() (*Result, error) {
 	if s.cgroupStatter == nil {
-		// Firstly, check if we are containerized.
-		if ok, err := IsContainerized(s.fs); err != nil || !ok {
-			return nil, nil //nolint: nilnil
-		}
-
-		s.cgroupStatter = s.getCGroupSatter()
+		return nil, nil //nolint: nilnil
 	}
 
 	total, err := s.cgroupStatter.cpuTotal()
@@ -115,11 +114,7 @@ func (s *Statter) isCGroupV2() bool {
 // If the system is not containerized, this always returns nil.
 func (s *Statter) ContainerMemory(p Prefix) (*Result, error) {
 	if s.cgroupStatter == nil {
-		if ok, err := IsContainerized(s.fs); err != nil || !ok {
-			return nil, nil //nolint: nilnil
-		}
-
-		s.cgroupStatter = s.getCGroupSatter()
+		return nil, nil //nolint: nilnil
 	}
 
 	return s.cgroupStatter.memory(p)

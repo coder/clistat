@@ -190,6 +190,7 @@ func New(opts ...Option) (*Statter, error) {
 	for _, opt := range opts {
 		opt(s)
 	}
+	s.cgroupStatter = s.getCGroupStatter()
 	return s, nil
 }
 
