@@ -137,7 +137,7 @@ func (s *Statter) isCGroupV2() bool {
 		return isCGroupV2(cgroupPath)
 	}
 
-	// As a fall back, we will for the presence of /sys/fs/cgroup/cpu.max
+	// As a fall back, we will check for the presence of /sys/fs/cgroup/cpu.max
 	// NOTE(DanielleMaywood):
 	// There is no requirement that a cgroup v2 file system will contain
 	// this file, meaning this isn't completely foolproof.
