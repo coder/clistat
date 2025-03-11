@@ -138,7 +138,7 @@ func (s *Statter) isCGroupV2() bool {
 		return isCGroupV2(cgroupPath)
 	}
 
-	s.logger.Warn(context.Background(), "not an *afero.OsFs, falling back to file existence check")
+	s.logger.Debug(context.Background(), "not an *afero.OsFs, falling back to file existence check")
 
 	// As a fall back, we will check for the presence of /sys/fs/cgroup/cpu.max
 	// NOTE(DanielleMaywood):
