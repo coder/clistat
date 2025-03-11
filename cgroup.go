@@ -6,6 +6,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/spf13/afero"
@@ -129,6 +130,8 @@ func (s *Statter) cGroupCPUUsed() (used float64, err error) {
 	return s.cGroupV1CPUUsed()
 }
 
+var isCGroupV2Once sync.Once
+
 func (s *Statter) isCGroupV2() bool {
 	// If the underlying file system is an `OsFs`, then we will
 	// make a `statfs` syscall to figure out if the filesystem
@@ -138,7 +141,9 @@ func (s *Statter) isCGroupV2() bool {
 		return isCGroupV2(cgroupPath)
 	}
 
-	s.logger.Debug(context.Background(), "not an *afero.OsFs, falling back to file existence check")
+	isCGroupV2Once.Do(func() {
+		s.logger.Debug(context.Background(), "not an *afero.OsFs, falling back to file existence check")
+	})
 
 	// As a fall back, we will check for the presence of /sys/fs/cgroup/cpu.max
 	// NOTE(DanielleMaywood):
