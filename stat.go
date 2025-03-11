@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"cdr.dev/slog"
 	"github.com/elastic/go-sysinfo"
 	"github.com/spf13/afero"
 	"golang.org/x/xerrors"
@@ -145,6 +146,8 @@ type Statter struct {
 	sampleInterval time.Duration
 	nproc          int
 	wait           func(time.Duration)
+	logger         slog.Logger
+	cgroupStatter  cgroupStatter
 }
 
 type Option func(*Statter)
@@ -160,6 +163,13 @@ func WithSampleInterval(d time.Duration) Option {
 func WithFS(fs afero.Fs) Option {
 	return func(s *Statter) {
 		s.fs = fs
+	}
+}
+
+// WithLogger sets the logger for the statter.
+func WithLogger(logger slog.Logger) Option {
+	return func(s *Statter) {
+		s.logger = logger
 	}
 }
 
@@ -180,6 +190,7 @@ func New(opts ...Option) (*Statter, error) {
 	for _, opt := range opts {
 		opt(s)
 	}
+	s.cgroupStatter = s.getCGroupStatter()
 	return s, nil
 }
 
