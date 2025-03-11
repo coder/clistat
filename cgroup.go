@@ -3,6 +3,7 @@ package clistat
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"strconv"
 	"strings"
 
@@ -136,6 +137,8 @@ func (s *Statter) isCGroupV2() bool {
 	if _, ok := s.fs.(*afero.OsFs); ok {
 		return isCGroupV2(cgroupPath)
 	}
+
+	s.logger.Warn(context.Background(), "not an *afero.OsFs, falling back to file existence check")
 
 	// As a fall back, we will check for the presence of /sys/fs/cgroup/cpu.max
 	// NOTE(DanielleMaywood):

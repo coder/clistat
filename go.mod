@@ -5,6 +5,7 @@ go 1.23.1
 toolchain go1.23.6
 
 require (
+	cdr.dev/slog v1.6.1
 	github.com/elastic/go-sysinfo v1.15.1
 	github.com/spf13/afero v1.12.0
 	github.com/stretchr/testify v1.10.0
@@ -19,6 +20,8 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
+	go.opentelemetry.io/otel v1.33.0 // indirect
+	go.opentelemetry.io/otel/trace v1.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.0 // indirect
 )
