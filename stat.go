@@ -147,6 +147,7 @@ type Statter struct {
 	nproc          int
 	wait           func(time.Duration)
 	logger         slog.Logger
+	cgroupStatter  cgroupStatter
 }
 
 type Option func(*Statter)
