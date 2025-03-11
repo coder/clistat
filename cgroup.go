@@ -5,11 +5,17 @@ import (
 	"bytes"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/spf13/afero"
 	"golang.org/x/xerrors"
 	"tailscale.com/types/ptr"
+)
+
+// Path for cgroup
+const (
+	cgroupPath = "/sys/fs/cgroup"
 )
 
 // Paths for CGroupV1.
@@ -49,6 +55,10 @@ const (
 	// rounded down to multiples of 4096 (2^12), the most common page size on x86 systems.
 	// This is used by docker to indicate no memory limit.
 	UnlimitedMemory int64 = 9223372036854771712
+
+	// 0x63677270 (ascii for 'cgrp') is the magic number for identifying a cgroup v2
+	// filesystem.
+	cgroupV2MagicNumber = 0x63677270
 )
 
 // ContainerCPU returns the CPU usage of the container cgroup.
@@ -119,7 +129,23 @@ func (s *Statter) cGroupCPUUsed() (used float64, err error) {
 }
 
 func (s *Statter) isCGroupV2() bool {
-	// Check for the presence of /sys/fs/cgroup/cpu.max
+	// If the underlying file system is an `OsFs`, then we will
+	// make a `statfs` syscall to figure out if the filesystem
+	// is cgroup v2 or not. This is unfortunately required as
+	// afero doesn't implement this syscall functionality for us.
+	if _, ok := s.fs.(*afero.OsFs); ok {
+		var stat syscall.Statfs_t
+		if err := syscall.Statfs(cgroupPath, &stat); err != nil {
+			return false
+		}
+
+		return stat.Type == cgroupV2MagicNumber
+	}
+
+	// As a fall back, we will for the presence of /sys/fs/cgroup/cpu.max
+	// NOTE(DanielleMaywood):
+	// There is no requirement that a cgroup v2 file system will contain
+	// this file, meaning this isn't completely foolproof.
 	_, err := s.fs.Stat(cgroupV2CPUMax)
 	return err == nil
 }
