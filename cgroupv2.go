@@ -1,6 +1,7 @@
 package clistat
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/spf13/afero"
@@ -49,7 +50,7 @@ func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
 
 	quotaUs, err = readInt64SepIdx(s.fs, cgroupV2CPUMax, " ", 0)
 	if err != nil {
-		if xerrors.Is(err, strconv.ErrSyntax) {
+		if errors.Is(err, strconv.ErrSyntax) {
 			// If the value is not a valid integer, assume it is the string
 			// 'max' and that there is no limit set.
 			return -1, nil
@@ -67,7 +68,7 @@ func (s cgroupV2Statter) memory(p Prefix) (*Result, error) {
 	}
 	maxUsageBytes, err := readInt64(s.fs, cgroupV2MemoryMaxBytes)
 	if err != nil {
-		if !xerrors.Is(err, strconv.ErrSyntax) {
+		if !errors.Is(err, strconv.ErrSyntax) {
 			return nil, xerrors.Errorf("read memory total: %w", err)
 		}
 		// If the value is not a valid integer, assume it is the string

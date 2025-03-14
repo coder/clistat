@@ -1,6 +1,7 @@
 package clistat
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
@@ -107,7 +108,7 @@ func (s cgroupV1Statter) memory(p Prefix) (*Result, error) {
 	}
 	maxUsageBytes, err := readInt64(s.fs, cgroupV1MemoryMaxUsageBytes)
 	if err != nil {
-		if !xerrors.Is(err, strconv.ErrSyntax) {
+		if !errors.Is(err, strconv.ErrSyntax) {
 			return nil, xerrors.Errorf("read memory total: %w", err)
 		}
 		// I haven't found an instance where this isn't a valid integer.
