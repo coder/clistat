@@ -1,7 +1,7 @@
 GO_SRC_FILES := $(shell find . -type f -name '*.go')
 SHELL_SRC_FILES := $(shell find . -type f -name '*.sh')
 
-GOLANGCI_LINT_VERSION := v1.59.1
+GOLANGCI_LINT_VERSION := v1.64.7
 
 .PHONY: test
 test:
