@@ -27,5 +27,5 @@ lint/shellcheck: $(SHELL_SRC_FILES)
 fmt: fmt/go
 
 .PHONY: fmt/go
-fmt/go: $(shell find . -type f -name '*.go')
+fmt/go: $(GO_SRC_FILES)
 	go run mvdan.cc/gofumpt@v0.6.0 -l -w .
