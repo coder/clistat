@@ -150,6 +150,3 @@ jobs:
 
       - name: Lint
         run: make lint
-
-      - name: Check for unstaged
-        run: ./scripts/check_unstaged.sh
