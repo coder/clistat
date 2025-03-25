@@ -31,7 +31,7 @@ type cgroupStatter interface {
 }
 
 func (s *Statter) getCGroupStatter() cgroupStatter {
-	if ok, err := IsContainerized(s.fs); err != nil || !ok {
+	if ok, err := s.IsContainerized(); err != nil || !ok {
 		return nil
 	}
 
