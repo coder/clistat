@@ -298,8 +298,9 @@ func TestIsContainerized(t *testing.T) {
 	t.Run("IsCorrectlyDetected", func(t *testing.T) {
 		t.Parallel()
 
-		fs := afero.NewOsFs()
-		isContainer, err := IsContainerized(fs)
+		s, err := New(WithFS(afero.NewOsFs()))
+		require.NoError(t, err)
+		isContainer, err := s.IsContainerized()
 		require.NoError(t, err)
 
 		if os.Getenv("CLISTAT_IS_CONTAINERIZED") == "yes" {
@@ -402,7 +403,9 @@ func TestIsContainerized(t *testing.T) {
 		t.Run(tt.Name, func(t *testing.T) {
 			t.Parallel()
 			fs := initFS(t, tt.FS)
-			actual, err := IsContainerized(fs)
+			s, err := New(WithFS(fs))
+			require.NoError(t, err)
+			actual, err := s.IsContainerized()
 			if tt.Error == "" {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.Expected, actual)

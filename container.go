@@ -20,8 +20,8 @@ const (
 // This is adapted from https://github.com/elastic/go-sysinfo/tree/main/providers/linux/container.go#L31
 // with modifications to support Sysbox containers.
 // On non-Linux platforms, it always returns false.
-func IsContainerized(fs afero.Fs) (ok bool, err error) {
-	cgData, err := afero.ReadFile(fs, procOneCgroup)
+func (s *Statter) IsContainerized() (ok bool, err error) {
+	cgData, err := afero.ReadFile(s.fs, procOneCgroup)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
@@ -43,14 +43,14 @@ func IsContainerized(fs afero.Fs) (ok bool, err error) {
 	// Sometimes the above method of sniffing /proc/1/cgroup isn't reliable.
 	// If a Kubernetes service account token is present, that's
 	// also a good indication that we are in a container.
-	_, err = afero.ReadFile(fs, kubernetesDefaultServiceAccountToken)
+	_, err = afero.ReadFile(s.fs, kubernetesDefaultServiceAccountToken)
 	if err == nil {
 		return true, nil
 	}
 
 	// Last-ditch effort to detect Sysbox containers.
 	// Check if we have anything mounted as type sysboxfs in /proc/mounts
-	mountsData, err := afero.ReadFile(fs, procMounts)
+	mountsData, err := afero.ReadFile(s.fs, procMounts)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
@@ -69,7 +69,7 @@ func IsContainerized(fs afero.Fs) (ok bool, err error) {
 	// Adapted from https://github.com/systemd/systemd/blob/88bbf187a9b2ebe0732caa1e886616ae5f8186da/src/basic/virt.c#L603-L605
 	// The file `/sys/fs/cgroup/cgroup.type` does not exist on the root cgroup.
 	// If this file exists we can be sure we're in a container.
-	cgTypeExists, err := afero.Exists(fs, sysCgroupType)
+	cgTypeExists, err := afero.Exists(s.fs, sysCgroupType)
 	if err != nil {
 		return false, xerrors.Errorf("check file exists %s: %w", sysCgroupType, err)
 	}
