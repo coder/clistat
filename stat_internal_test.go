@@ -299,6 +299,7 @@ func TestIsContainerized(t *testing.T) {
 		t.Parallel()
 
 		s, err := New(WithFS(afero.NewOsFs()))
+		require.NoError(t, err)
 		isContainer, err := s.IsContainerized()
 		require.NoError(t, err)
 
@@ -403,6 +404,7 @@ func TestIsContainerized(t *testing.T) {
 			t.Parallel()
 			fs := initFS(t, tt.FS)
 			s, err := New(WithFS(fs))
+			require.NoError(t, err)
 			actual, err := s.IsContainerized()
 			if tt.Error == "" {
 				assert.NoError(t, err)
