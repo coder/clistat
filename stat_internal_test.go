@@ -2,6 +2,7 @@ package clistat
 
 import (
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -415,6 +416,26 @@ func TestIsContainerized(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCPUTotal(t *testing.T) {
+	t.Parallel()
+
+	expectedCPUCountString := os.Getenv("CLISTAT_CPU_COUNT")
+	if expectedCPUCountString == "" {
+		t.Skip("Skipping test - CLISTAT_CPU_COUNT not set")
+	}
+
+	expectedCPUCount, err := strconv.Atoi(expectedCPUCountString)
+	require.NoError(t, err)
+
+	s, err := New()
+	require.NoError(t, err)
+
+	cpu, err := s.HostCPU()
+	require.NoError(t, err)
+	require.NotNil(t, cpu.Total)
+	require.Equal(t, expectedCPUCount, int(*cpu.Total))
 }
 
 // helper function for initializing a fs
