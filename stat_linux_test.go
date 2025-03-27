@@ -1,6 +1,6 @@
-// //go:build linux
+//go:build linux
 
-// package clistat
+package clistat
 
 // import (
 // 	"testing"
