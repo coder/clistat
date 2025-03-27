@@ -1,6 +1,7 @@
 package clistat
 
 import (
+	"context"
 	"runtime"
 	"strings"
 
@@ -12,6 +13,7 @@ func (s *Statter) numCPU() int {
 	if err != nil {
 		// If we have an issue reading from `/proc/cpuinfo`
 		// we instead fallback to `runtime.NumCPU`.
+		s.logger.Debug(context.Background(), "unable to read `/proc/cpuinfo`, falling back to `runtime.NumCPU()`")
 		return runtime.NumCPU()
 	}
 
