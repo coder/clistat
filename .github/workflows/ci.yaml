@@ -71,6 +71,7 @@ jobs:
         options:
           - "--memory=1024MB"
           - "--cpus=1"
+          - "--cpuset-cpus=0"
     runs-on: ${{ matrix.runs-on }}
     container:
       image: golang:1.23
@@ -88,6 +89,7 @@ jobs:
           CLISTAT_IS_CONTAINERIZED: "yes"
           CLISTAT_HAS_MEMORY_LIMIT: ${{ contains(matrix.options, '--memory=') && 'yes' || '' }}
           CLISTAT_HAS_CPU_LIMIT: ${{ contains(matrix.options, '--cpus=') && 'yes' || '' }}
+          CLISTAT_CPU_COUNT: ${{ contains(matrix.options, '--cpuset-cpus=') && '2' || '' }}
 
   test-container-race:
     strategy:
