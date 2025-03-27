@@ -4,10 +4,8 @@ package clistat
 
 import (
 	"runtime"
-
-	"github.com/spf13/afero"
 )
 
-func numCPU(_ afero.Fs) int {
+func (s *Statter) numCPU() int {
 	return runtime.NumCPU()
 }

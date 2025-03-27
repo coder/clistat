@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/afero"
 )
 
-func numCPU(fs afero.Fs) int {
-	procCPUInfo, err := afero.ReadFile(fs, "/proc/cpuinfo")
+func (s *Statter) numCPU() int {
+	procCPUInfo, err := afero.ReadFile(s.fs, "/proc/cpuinfo")
 	if err != nil {
 		// If we have an issue reading from `/proc/cpuinfo`
 		// we instead fallback to `runtime.NumCPU`.

@@ -189,7 +189,7 @@ func New(opts ...Option) (*Statter, error) {
 		opt(s)
 	}
 
-	s.nproc = numCPU(s.fs)
+	s.nproc = s.numCPU()
 	s.cgroupStatter = s.getCGroupStatter()
 
 	return s, nil
