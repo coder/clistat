@@ -2,7 +2,6 @@ package clistat
 
 import (
 	"math"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -182,7 +181,6 @@ func New(opts ...Option) (*Statter, error) {
 		hi:             hi,
 		fs:             afero.NewReadOnlyFs(afero.NewOsFs()),
 		sampleInterval: 100 * time.Millisecond,
-		nproc:          runtime.NumCPU(),
 		wait: func(d time.Duration) {
 			<-time.After(d)
 		},
@@ -190,7 +188,10 @@ func New(opts ...Option) (*Statter, error) {
 	for _, opt := range opts {
 		opt(s)
 	}
+
+	s.nproc = s.numCPU()
 	s.cgroupStatter = s.getCGroupStatter()
+
 	return s, nil
 }
 
