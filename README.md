@@ -25,6 +25,12 @@ A Go library for measuring and reporting system resource usage.
 
 ## Usage
 
+The below sample code can be run as follows:
+
+```shell
+CGO_ENABLED=0 go run github.com/coder/clistat/cmd/clistat
+```
+
 ```go
 package main
 
