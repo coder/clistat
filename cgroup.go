@@ -3,7 +3,6 @@ package clistat
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"strconv"
 	"strings"
 
@@ -92,22 +91,7 @@ func (s *Statter) ContainerCPU() (*Result, error) {
 }
 
 func (s *Statter) isCGroupV2() bool {
-	// If the underlying file system is an `OsFs`, then we will
-	// make a `statfs` syscall to figure out if the filesystem
-	// is cgroup v2 or not. This is unfortunately required as
-	// afero doesn't implement this syscall functionality for us.
-	if _, ok := s.fs.(*afero.OsFs); ok {
-		return isCGroupV2(cgroupPath)
-	}
-
-	s.logger.Debug(context.Background(), "not an *afero.OsFs, falling back to file existence check")
-
-	// As a fall back, we will check for the presence of /sys/fs/cgroup/cpu.max
-	// NOTE(DanielleMaywood):
-	// There is no requirement that a cgroup v2 file system will contain
-	// this file, meaning this isn't completely foolproof.
-	_, err := s.fs.Stat(cgroupV2CPUMax)
-	return err == nil
+	return s.cgroupV2Detector(s.fs)
 }
 
 // ContainerMemory returns the memory usage of the container cgroup.

@@ -140,13 +140,14 @@ func precision(f float64) int {
 // Statter is a system statistics collector.
 // It is a thin wrapper around the elastic/go-sysinfo library.
 type Statter struct {
-	hi             sysinfotypes.Host
-	fs             afero.Fs
-	sampleInterval time.Duration
-	nproc          int
-	wait           func(time.Duration)
-	logger         slog.Logger
-	cgroupStatter  cgroupStatter
+	hi               sysinfotypes.Host
+	fs               afero.Fs
+	sampleInterval   time.Duration
+	nproc            int
+	wait             func(time.Duration)
+	logger           slog.Logger
+	cgroupStatter    cgroupStatter
+	cgroupV2Detector func(afero.Fs) bool
 }
 
 type Option func(*Statter)
@@ -172,6 +173,12 @@ func WithLogger(logger slog.Logger) Option {
 	}
 }
 
+func WithCGroupV2Detector(detector func(fs afero.Fs) bool) Option {
+	return func(s *Statter) {
+		s.cgroupV2Detector = detector
+	}
+}
+
 func New(opts ...Option) (*Statter, error) {
 	hi, err := sysinfo.Host()
 	if err != nil {
@@ -183,6 +190,9 @@ func New(opts ...Option) (*Statter, error) {
 		sampleInterval: 100 * time.Millisecond,
 		wait: func(d time.Duration) {
 			<-time.After(d)
+		},
+		cgroupV2Detector: func(_ afero.Fs) bool {
+			return isCGroupV2(cgroupPath)
 		},
 	}
 	for _, opt := range opts {
