@@ -344,7 +344,7 @@ func TestCGroupV2Detection(t *testing.T) {
 	}{
 		{
 			name: "OsFs",
-			fs:   afero.NewReadOnlyFs(afero.NewOsFs()),
+			fs:   afero.NewOsFs(),
 		},
 		{
 			name: "OsFs/ReadOnly",
