@@ -87,6 +87,7 @@ jobs:
         run: make test
         env:
           CLISTAT_IS_CONTAINERIZED: "yes"
+          CLISTAT_IS_CGROUPV2: "yes"
           CLISTAT_HAS_MEMORY_LIMIT: ${{ contains(matrix.options, '--memory=') && 'yes' || '' }}
           CLISTAT_HAS_CPU_LIMIT: ${{ contains(matrix.options, '--cpus=') && 'yes' || '' }}
           CLISTAT_CPU_COUNT: ${{ contains(matrix.options, '--cpuset-cpus=') && '2' || '' }}
@@ -119,6 +120,7 @@ jobs:
         run: make test-race
         env:
           CLISTAT_IS_CONTAINERIZED: "yes"
+          CLISTAT_IS_CGROUPV2: "yes"
           CLISTAT_HAS_MEMORY_LIMIT: ${{ contains(matrix.options, '--memory=') && 'yes' || '' }}
           CLISTAT_HAS_CPU_LIMIT: ${{ contains(matrix.options, '--cpus=') && 'yes' || '' }}
 

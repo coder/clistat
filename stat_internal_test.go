@@ -333,6 +333,42 @@ func TestStatter(t *testing.T) {
 	})
 }
 
+func TestCGroupV2Detection(t *testing.T) {
+	t.Parallel()
+
+	hostISCGroupV2 := os.Getenv("CLISTAT_IS_CGROUPV2") == "yes"
+
+	tests := []struct {
+		name string
+		fs   afero.Fs
+	}{
+		{
+			name: "OsFs",
+			fs:   afero.NewReadOnlyFs(afero.NewOsFs()),
+		},
+		{
+			name: "OsFs/ReadOnly",
+			fs:   afero.NewReadOnlyFs(afero.NewOsFs()),
+		},
+		{
+			name: "InMemoryFs/MissingCPUMax",
+			fs:   initFS(t, fsContainerCgroupV2NoCPUMax),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s, err := New(WithFS(tt.fs))
+			require.NoError(t, err)
+
+			isCGroupV2 := s.cgroupV2Detector(s.fs)
+			assert.Equal(t, hostISCGroupV2, isCGroupV2)
+		})
+	}
+}
+
 func TestIsContainerized(t *testing.T) {
 	t.Parallel()
 
@@ -533,6 +569,16 @@ proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
 proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		sysCgroupType: "domain",
+	}
+	fsContainerCgroupV2NoCPUMax = map[string]string{
+		procOneCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
+proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
+		// Note: cpu.max is intentionally missing
+		cgroupV2CPUStat:          "usage_usec 0",
+		cgroupV2MemoryMaxBytes:   "1073741824",
+		cgroupV2MemoryUsageBytes: "536870912",
+		cgroupV2MemoryStat:       "inactive_file 268435456",
 	}
 	fsContainerCgroupV1 = map[string]string{
 		procOneCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
