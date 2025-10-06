@@ -37,12 +37,12 @@ func (s cgroupV2Statter) cpuUsed() (used float64, err error) {
 	if err != nil {
 		return 0, xerrors.Errorf("get cgroupv2 cpu used: %w", err)
 	}
-	period, err := s.cpuPeriod()
+	periodUs, err := s.cpuPeriod()
 	if err != nil {
 		return 0, xerrors.Errorf("get cpu period: %w", err)
 	}
 
-	return float64(usageUs) / period, nil
+	return float64(usageUs) / periodUs, nil
 }
 
 func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
