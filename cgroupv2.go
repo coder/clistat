@@ -2,6 +2,7 @@ package clistat
 
 import (
 	"errors"
+	"io/fs"
 	"strconv"
 
 	"github.com/spf13/afero"
@@ -22,6 +23,9 @@ const (
 	cgroupV2MemoryMaxBytes = "/sys/fs/cgroup/memory.max"
 	// Other memory stats - we are interested in total_inactive_file
 	cgroupV2MemoryStat = "/sys/fs/cgroup/memory.stat"
+
+	// https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#cpu
+	cgroupV2DefaultCPUPeriod = 100_000
 )
 
 type cgroupV2Statter struct {
@@ -33,24 +37,23 @@ func (s cgroupV2Statter) cpuUsed() (used float64, err error) {
 	if err != nil {
 		return 0, xerrors.Errorf("get cgroupv2 cpu used: %w", err)
 	}
-	periodUs, err := readInt64SepIdx(s.fs, cgroupV2CPUMax, " ", 1)
+	periodUs, err := s.cpuPeriod()
 	if err != nil {
 		return 0, xerrors.Errorf("get cpu period: %w", err)
 	}
 
-	return float64(usageUs) / float64(periodUs), nil
+	return float64(usageUs) / periodUs, nil
 }
 
 func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
-	var quotaUs, periodUs int64
-	periodUs, err = readInt64SepIdx(s.fs, cgroupV2CPUMax, " ", 1)
+	periodUs, err := s.cpuPeriod()
 	if err != nil {
 		return 0, xerrors.Errorf("get cpu period: %w", err)
 	}
 
-	quotaUs, err = readInt64SepIdx(s.fs, cgroupV2CPUMax, " ", 0)
+	quotaUs, err := readInt64SepIdx(s.fs, cgroupV2CPUMax, " ", 0)
 	if err != nil {
-		if errors.Is(err, strconv.ErrSyntax) {
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, strconv.ErrSyntax) {
 			// If the value is not a valid integer, assume it is the string
 			// 'max' and that there is no limit set.
 			return -1, nil
@@ -59,6 +62,18 @@ func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
 	}
 
 	return float64(quotaUs) / float64(periodUs), nil
+}
+
+func (s cgroupV2Statter) cpuPeriod() (float64, error) {
+	// https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#cpu
+	periodUs, err := readInt64SepIdx(s.fs, cgroupV2CPUMax, " ", 1)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return float64(cgroupV2DefaultCPUPeriod), nil
+		}
+		return 0, xerrors.Errorf("get cpu period: %w", err)
+	}
+	return float64(periodUs), nil
 }
 
 func (s cgroupV2Statter) memory(p Prefix) (*Result, error) {

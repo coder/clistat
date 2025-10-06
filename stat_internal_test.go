@@ -298,6 +298,25 @@ func TestStatter(t *testing.T) {
 			assert.Equal(t, "cores", cpu.Unit)
 		})
 
+		t.Run("ContainerCPU/MissingCPUMax", func(t *testing.T) {
+			t.Parallel()
+
+			fs := initFS(t, fsContainerCgroupV2NoCPUMax)
+			fakeWait := func(time.Duration) {
+				mungeFS(t, fs, cgroupV2CPUStat, "usage_usec 100000")
+			}
+			s, err := New(WithFS(fs), withNproc(2), withWait(fakeWait), withIsCGroupV2(true))
+			require.NoError(t, err)
+
+			cpu, err := s.ContainerCPU()
+			require.NoError(t, err)
+
+			require.NotNil(t, cpu)
+			assert.Equal(t, 1.0, cpu.Used)
+			require.Nil(t, cpu.Total)
+			assert.Equal(t, "cores", cpu.Unit)
+		})
+
 		t.Run("ContainerMemory/Limit", func(t *testing.T) {
 			t.Parallel()
 
