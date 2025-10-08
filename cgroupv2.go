@@ -77,17 +77,18 @@ func (s cgroupV2Statter) cpuPeriod() (float64, error) {
 }
 
 func (s cgroupV2Statter) memory(p Prefix) (*Result, error) {
+	// https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
 	r := &Result{
 		Unit:   "B",
 		Prefix: p,
 	}
 	maxUsageBytes, err := readInt64(s.fs, cgroupV2MemoryMaxBytes)
 	if err != nil {
-		if !errors.Is(err, strconv.ErrSyntax) {
+		if !errors.Is(err, strconv.ErrSyntax) && !errors.Is(err, fs.ErrNotExist) {
 			return nil, xerrors.Errorf("read memory total: %w", err)
 		}
-		// If the value is not a valid integer, assume it is the string
-		// 'max' and that there is no limit set.
+		// If the value is not a valid integer _or_ the memory max file
+		// does not exist, than we can assume that the limit is 'max'.
 	} else {
 		r.Total = ptr.To(float64(maxUsageBytes))
 	}
