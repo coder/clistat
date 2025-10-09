@@ -1,6 +1,7 @@
 package clistat
 
 import (
+	"errors"
 	"math"
 	"strconv"
 	"strings"
@@ -192,7 +193,7 @@ func New(opts ...Option) (*Statter, error) {
 			<-time.After(d)
 		},
 		cgroupV2Detector: func(_ afero.Fs) bool {
-			return isCGroupV2(cgroupPath)
+			return isCgroupV2(cgroupRootPath)
 		},
 	}
 	for _, opt := range opts {
@@ -200,7 +201,13 @@ func New(opts ...Option) (*Statter, error) {
 	}
 
 	s.nproc = s.numCPU()
-	s.cgroupStatter = s.getCGroupStatter()
+
+	statter, err := s.getCgroupStatter()
+	if err != nil && !errors.Is(err, errNotContainerized) {
+		return nil, xerrors.Errorf("get cgroup statter: %v", err)
+	}
+
+	s.cgroupStatter = statter
 
 	return s, nil
 }

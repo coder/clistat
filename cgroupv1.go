@@ -11,7 +11,7 @@ import (
 	"tailscale.com/types/ptr"
 )
 
-// Paths for CGroupV1.
+// Paths for CgroupV1.
 // Ref: https://www.kernel.org/doc/Documentation/cgroup-v1/cpuacct.txt
 const (
 	// CPU usage of all tasks in cgroup in nanoseconds.
