@@ -3,6 +3,7 @@ package clistat
 import (
 	"errors"
 	"io/fs"
+	"path/filepath"
 	"strconv"
 
 	"github.com/spf13/afero"
@@ -10,95 +11,144 @@ import (
 	"tailscale.com/types/ptr"
 )
 
-// Paths for CGroupV2.
+// Paths for CgroupV2.
 // Ref: https://docs.kernel.org/admin-guide/cgroup-v2.html
 const (
-	// Contains quota and period in microseconds separated by a space.
-	cgroupV2CPUMax = "/sys/fs/cgroup/cpu.max"
-	// Contains current CPU usage under usage_usec
-	cgroupV2CPUStat = "/sys/fs/cgroup/cpu.stat"
-	// Contains current cgroup memory usage in bytes.
-	cgroupV2MemoryUsageBytes = "/sys/fs/cgroup/memory.current"
-	// Contains max cgroup memory usage in bytes.
-	cgroupV2MemoryMaxBytes = "/sys/fs/cgroup/memory.max"
-	// Other memory stats - we are interested in total_inactive_file
-	cgroupV2MemoryStat = "/sys/fs/cgroup/memory.stat"
+	// Contains a path to the cgroup
+	procSelfCgroup = "/proc/self/cgroup"
 
-	// https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#cpu
-	cgroupV2DefaultCPUPeriod = 100_000
+	// Contains quota and period in microseconds separated by a space.
+	cgroupV2CPUMax = "cpu.max"
+	// Contains current CPU usage under usage_usec
+	cgroupV2CPUStat = "cpu.stat"
+	// Contains current cgroup memory usage in bytes.
+	cgroupV2MemoryUsageBytes = "memory.current"
+	// Contains max cgroup memory usage in bytes.
+	cgroupV2MemoryMaxBytes = "memory.max"
+	// Other memory stats - we are interested in total_inactive_file
+	cgroupV2MemoryStat = "memory.stat"
 )
 
 type cgroupV2Statter struct {
-	fs afero.Fs
+	parent *cgroupV2Statter
+	path   string
+	fs     afero.Fs
+}
+
+func newCgroupV2Statter(fs afero.Fs, path string) *cgroupV2Statter {
+	var parent *cgroupV2Statter
+
+	path = filepath.Clean(path)
+	if parentPath := filepath.Dir(path); parentPath != path {
+		parent = newCgroupV2Statter(fs, parentPath)
+	}
+
+	return &cgroupV2Statter{
+		parent: parent,
+		path:   filepath.Join(cgroupRootPath, path),
+		fs:     fs,
+	}
 }
 
 func (s cgroupV2Statter) cpuUsed() (used float64, err error) {
-	usageUs, err := readInt64Prefix(s.fs, cgroupV2CPUStat, "usage_usec")
+	cpuStatPath := filepath.Join(s.path, cgroupV2CPUStat)
+	cpuMaxPath := filepath.Join(s.path, cgroupV2CPUMax)
+
+	usageUs, err := readInt64Prefix(s.fs, cpuStatPath, "usage_usec")
 	if err != nil {
 		return 0, xerrors.Errorf("get cgroupv2 cpu used: %w", err)
 	}
-	periodUs, err := s.cpuPeriod()
+	periodUs, err := readInt64SepIdx(s.fs, cpuMaxPath, " ", 1)
 	if err != nil {
 		return 0, xerrors.Errorf("get cpu period: %w", err)
 	}
 
-	return float64(usageUs) / periodUs, nil
+	return float64(usageUs) / float64(periodUs), nil
+}
+
+func (s cgroupV2Statter) cpuQuota() (float64, error) {
+	cpuMaxPath := filepath.Join(s.path, cgroupV2CPUMax)
+
+	quotaUs, err := readInt64SepIdx(s.fs, cpuMaxPath, " ", 0)
+	if err != nil {
+		if !errors.Is(err, strconv.ErrSyntax) && !errors.Is(err, fs.ErrNotExist) {
+			return 0, xerrors.Errorf("get cpu quota: %w", err)
+		}
+
+		// If the value is not a valid integer, assume it is the string
+		// 'max' and that there is no limit set. In this scenario, we call
+		// the parent to find its quota.
+		if s.parent != nil {
+			return s.parent.cpuQuota()
+		}
+
+		return -1, nil
+	}
+
+	return float64(quotaUs), nil
 }
 
 func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
-	periodUs, err := s.cpuPeriod()
+	cpuMaxPath := filepath.Join(s.path, cgroupV2CPUMax)
+
+	periodUs, err := readInt64SepIdx(s.fs, cpuMaxPath, " ", 1)
 	if err != nil {
 		return 0, xerrors.Errorf("get cpu period: %w", err)
 	}
 
-	quotaUs, err := readInt64SepIdx(s.fs, cgroupV2CPUMax, " ", 0)
+	quotaUs, err := s.cpuQuota()
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, strconv.ErrSyntax) {
-			// If the value is not a valid integer, assume it is the string
-			// 'max' and that there is no limit set.
-			return -1, nil
-		}
 		return 0, xerrors.Errorf("get cpu quota: %w", err)
 	}
 
 	return float64(quotaUs) / float64(periodUs), nil
 }
 
-func (s cgroupV2Statter) cpuPeriod() (float64, error) {
-	// https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#cpu
-	periodUs, err := readInt64SepIdx(s.fs, cgroupV2CPUMax, " ", 1)
+func (s cgroupV2Statter) memoryMax() (*float64, error) {
+	memoryMaxPath := filepath.Join(s.path, cgroupV2MemoryMaxBytes)
+
+	maxUsageBytes, err := readInt64(s.fs, memoryMaxPath)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return float64(cgroupV2DefaultCPUPeriod), nil
+		if !errors.Is(err, strconv.ErrSyntax) && !errors.Is(err, fs.ErrNotExist) {
+			return nil, xerrors.Errorf("read memory total: %w", err)
 		}
-		return 0, xerrors.Errorf("get cpu period: %w", err)
+
+		// If the value is not a valid integer _or_ the memory max file
+		// does not exist, than we can assume that the limit is 'max'.
+		// If the memory limit is max, and we have a parent, we shall call
+		// the parent to find its maximum memory value.
+		if s.parent != nil {
+			return s.parent.memoryMax()
+		}
+
+		// We have no parent, and no max memory limit, so there is no memory limit.
+		return nil, nil
 	}
-	return float64(periodUs), nil
+
+	return ptr.To(float64(maxUsageBytes)), nil
 }
 
 func (s cgroupV2Statter) memory(p Prefix) (*Result, error) {
+	memoryUsagePath := filepath.Join(s.path, cgroupV2MemoryUsageBytes)
+	memoryStatPath := filepath.Join(s.path, cgroupV2MemoryStat)
+
 	// https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
 	r := &Result{
 		Unit:   "B",
 		Prefix: p,
 	}
-	maxUsageBytes, err := readInt64(s.fs, cgroupV2MemoryMaxBytes)
-	if err != nil {
-		if !errors.Is(err, strconv.ErrSyntax) && !errors.Is(err, fs.ErrNotExist) {
-			return nil, xerrors.Errorf("read memory total: %w", err)
-		}
-		// If the value is not a valid integer _or_ the memory max file
-		// does not exist, than we can assume that the limit is 'max'.
+	if total, err := s.memoryMax(); err != nil {
+		return nil, xerrors.Errorf("read memory total: %w", err)
 	} else {
-		r.Total = ptr.To(float64(maxUsageBytes))
+		r.Total = total
 	}
 
-	currUsageBytes, err := readInt64(s.fs, cgroupV2MemoryUsageBytes)
+	currUsageBytes, err := readInt64(s.fs, memoryUsagePath)
 	if err != nil {
 		return nil, xerrors.Errorf("read memory usage: %w", err)
 	}
 
-	inactiveFileBytes, err := readInt64Prefix(s.fs, cgroupV2MemoryStat, "inactive_file")
+	inactiveFileBytes, err := readInt64Prefix(s.fs, memoryStatPath, "inactive_file")
 	if err != nil {
 		return nil, xerrors.Errorf("read memory stats: %w", err)
 	}
