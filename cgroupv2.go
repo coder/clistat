@@ -47,7 +47,7 @@ type cgroupV2Statter struct {
 func newCgroupV2Statter(fs afero.Fs, path string, depth int) (*cgroupV2Statter, error) {
 	var parent *cgroupV2Statter
 
-	if depth == maxSupportCgroupDepth {
+	if depth >= maxSupportCgroupDepth {
 		return nil, errExceededMaxSupportedCgroupDepth
 	}
 

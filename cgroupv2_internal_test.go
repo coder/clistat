@@ -12,6 +12,7 @@ func TestRecursiveCreation(t *testing.T) {
 
 	tests := []struct {
 		path        string
+		startDepth  int
 		expectError bool
 	}{
 		{
@@ -30,6 +31,11 @@ func TestRecursiveCreation(t *testing.T) {
 			path:        "/a/very/large/depth/that/should/absolutely/fail/because/it/is/too/deep",
 			expectError: true,
 		},
+		{
+			startDepth:  maxSupportCgroupDepth + 1,
+			path:        "/a/very/large/depth/that/should/absolutely/fail/because/it/is/too/deep",
+			expectError: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -37,7 +43,7 @@ func TestRecursiveCreation(t *testing.T) {
 			t.Parallel()
 
 			fs := afero.NewMemMapFs()
-			statter, err := newCgroupV2Statter(fs, tt.path, 1)
+			statter, err := newCgroupV2Statter(fs, tt.path, tt.startDepth)
 			if tt.expectError {
 				require.ErrorIs(t, err, errExceededMaxSupportedCgroupDepth)
 				require.Nil(t, statter)
