@@ -132,7 +132,7 @@ func TestStatter(t *testing.T) {
 		}
 	}
 
-	withIsCgroupV2 := func(state bool) Option {
+	withIsCGroupV2 := func(state bool) Option {
 		return func(s *Statter) {
 			s.cgroupV2Detector = func(_ afero.Fs) bool {
 				return state
@@ -154,7 +154,7 @@ func TestStatter(t *testing.T) {
 				// Fake 1 second in ns of usage
 				mungeFS(t, fs, cgroupV1CPUAcctUsage, "100000000")
 			}
-			s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(false))
+			s, err := New(WithFS(fs), withWait(fakeWait), withIsCGroupV2(false))
 			require.NoError(t, err)
 
 			cpu, err := s.ContainerCPU()
@@ -175,7 +175,7 @@ func TestStatter(t *testing.T) {
 				// Fake 1 second in ns of usage
 				mungeFS(t, fs, cgroupV1CPUAcctUsage, "100000000")
 			}
-			s, err := New(WithFS(fs), withNproc(2), withWait(fakeWait), withIsCgroupV2(false))
+			s, err := New(WithFS(fs), withNproc(2), withWait(fakeWait), withIsCGroupV2(false))
 			require.NoError(t, err)
 
 			cpu, err := s.ContainerCPU()
@@ -195,7 +195,7 @@ func TestStatter(t *testing.T) {
 				// Fake 1 second in ns of usage
 				mungeFS(t, fs, "/sys/fs/cgroup/cpuacct/cpuacct.usage", "100000000")
 			}
-			s, err := New(WithFS(fs), withNproc(2), withWait(fakeWait), withIsCgroupV2(false))
+			s, err := New(WithFS(fs), withNproc(2), withWait(fakeWait), withIsCGroupV2(false))
 			require.NoError(t, err)
 
 			cpu, err := s.ContainerCPU()
@@ -212,7 +212,7 @@ func TestStatter(t *testing.T) {
 			t.Parallel()
 
 			fs := initFS(t, fsContainerCgroupV1)
-			s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(false))
+			s, err := New(WithFS(fs), withNoWait, withIsCGroupV2(false))
 			require.NoError(t, err)
 
 			mem, err := s.ContainerMemory(PrefixDefault)
@@ -229,7 +229,7 @@ func TestStatter(t *testing.T) {
 			t.Parallel()
 
 			fs := initFS(t, fsContainerCgroupV1NoLimit)
-			s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(false))
+			s, err := New(WithFS(fs), withNoWait, withIsCGroupV2(false))
 			require.NoError(t, err)
 
 			mem, err := s.ContainerMemory(PrefixDefault)
@@ -245,7 +245,7 @@ func TestStatter(t *testing.T) {
 			t.Parallel()
 
 			fs := initFS(t, fsContainerCgroupV1DockerNoMemoryLimit)
-			s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(false))
+			s, err := New(WithFS(fs), withNoWait, withIsCGroupV2(false))
 			require.NoError(t, err)
 
 			mem, err := s.ContainerMemory(PrefixDefault)
@@ -268,7 +268,7 @@ func TestStatter(t *testing.T) {
 			fakeWait := func(time.Duration) {
 				mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUStat), "usage_usec 100000")
 			}
-			s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(true))
+			s, err := New(WithFS(fs), withWait(fakeWait), withIsCGroupV2(true))
 
 			require.NoError(t, err)
 			cpu, err := s.ContainerCPU()
@@ -288,7 +288,7 @@ func TestStatter(t *testing.T) {
 			fakeWait := func(time.Duration) {
 				mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUStat), "usage_usec 100000")
 			}
-			s, err := New(WithFS(fs), withNproc(2), withWait(fakeWait), withIsCgroupV2(true))
+			s, err := New(WithFS(fs), withNproc(2), withWait(fakeWait), withIsCGroupV2(true))
 			require.NoError(t, err)
 
 			cpu, err := s.ContainerCPU()
@@ -304,7 +304,7 @@ func TestStatter(t *testing.T) {
 			t.Parallel()
 
 			fs := initFS(t, fsContainerCgroupV2)
-			s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+			s, err := New(WithFS(fs), withNoWait, withIsCGroupV2(true))
 			require.NoError(t, err)
 
 			mem, err := s.ContainerMemory(PrefixDefault)
@@ -321,7 +321,7 @@ func TestStatter(t *testing.T) {
 			t.Parallel()
 
 			fs := initFS(t, fsContainerCgroupV2NoLimit)
-			s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+			s, err := New(WithFS(fs), withNoWait, withIsCGroupV2(true))
 			require.NoError(t, err)
 
 			mem, err := s.ContainerMemory(PrefixDefault)
@@ -343,7 +343,7 @@ func TestStatter(t *testing.T) {
 				fakeWait := func(time.Duration) {
 					mungeFS(t, fs, filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat), "usage_usec 100000")
 				}
-				s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(true))
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCGroupV2(true))
 				require.NoError(t, err)
 
 				cpu, err := s.ContainerCPU()
@@ -364,7 +364,7 @@ func TestStatter(t *testing.T) {
 				fakeWait := func(time.Duration) {
 					mungeFS(t, fs, filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat), "usage_usec 100000")
 				}
-				s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(true))
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCGroupV2(true))
 				require.NoError(t, err)
 
 				cpu, err := s.ContainerCPU()
@@ -384,7 +384,7 @@ func TestStatter(t *testing.T) {
 				fakeWait := func(time.Duration) {
 					mungeFS(t, fs, filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat), "usage_usec 100000")
 				}
-				s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(true))
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCGroupV2(true))
 				require.NoError(t, err)
 
 				cpu, err := s.ContainerCPU()
@@ -400,7 +400,7 @@ func TestStatter(t *testing.T) {
 				t.Parallel()
 
 				fs := initFS(t, fsContainerCgroupV2KubernetesWithLimits)
-				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+				s, err := New(WithFS(fs), withNoWait, withIsCGroupV2(true))
 				require.NoError(t, err)
 
 				mem, err := s.ContainerMemory(PrefixDefault)
@@ -419,7 +419,7 @@ func TestStatter(t *testing.T) {
 				fs := initFS(t, fsContainerCgroupV2Kubernetes)
 				mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2MemoryMaxBytes), "1073741824")
 
-				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+				s, err := New(WithFS(fs), withNoWait, withIsCGroupV2(true))
 				require.NoError(t, err)
 
 				mem, err := s.ContainerMemory(PrefixDefault)
@@ -436,7 +436,7 @@ func TestStatter(t *testing.T) {
 				t.Parallel()
 
 				fs := initFS(t, fsContainerCgroupV2Kubernetes)
-				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+				s, err := New(WithFS(fs), withNoWait, withIsCGroupV2(true))
 				require.NoError(t, err)
 
 				mem, err := s.ContainerMemory(PrefixDefault)
@@ -451,10 +451,10 @@ func TestStatter(t *testing.T) {
 	})
 }
 
-func TestCgroupV2Detection(t *testing.T) {
+func TestCGroupV2Detection(t *testing.T) {
 	t.Parallel()
 
-	hostISCgroupV2 := os.Getenv("CLISTAT_IS_CGROUPV2") == "yes"
+	hostISCGroupV2 := os.Getenv("CLISTAT_IS_CGROUPV2") == "yes"
 
 	tests := []struct {
 		name string
@@ -478,7 +478,7 @@ func TestCgroupV2Detection(t *testing.T) {
 			require.NoError(t, err)
 
 			isCgroupV2 := s.cgroupV2Detector(s.fs)
-			assert.Equal(t, hostISCgroupV2, isCgroupV2)
+			assert.Equal(t, hostISCGroupV2, isCgroupV2)
 		})
 	}
 }

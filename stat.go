@@ -193,7 +193,7 @@ func New(opts ...Option) (*Statter, error) {
 			<-time.After(d)
 		},
 		cgroupV2Detector: func(_ afero.Fs) bool {
-			return isCgroupV2(cgroupRootPath)
+			return isCGroupV2(cgroupRootPath)
 		},
 	}
 	for _, opt := range opts {
@@ -202,7 +202,7 @@ func New(opts ...Option) (*Statter, error) {
 
 	s.nproc = s.numCPU()
 
-	statter, err := s.getCgroupStatter()
+	statter, err := s.getCGroupStatter()
 	if err != nil && !errors.Is(err, errNotContainerized) {
 		return nil, xerrors.Errorf("get cgroup statter: %v", err)
 	}

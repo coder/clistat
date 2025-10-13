@@ -11,7 +11,7 @@ import (
 	"tailscale.com/types/ptr"
 )
 
-// Paths for CgroupV2.
+// Paths for CGroupV2.
 // Ref: https://docs.kernel.org/admin-guide/cgroup-v2.html
 const (
 	// Contains a path to the cgroup

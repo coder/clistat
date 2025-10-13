@@ -32,7 +32,7 @@ type cgroupStatter interface {
 	memory(p Prefix) (*Result, error)
 }
 
-func (s *Statter) getCgroupStatter() (cgroupStatter, error) {
+func (s *Statter) getCGroupStatter() (cgroupStatter, error) {
 	isContainerized, err := s.IsContainerized()
 	if err != nil {
 		return nil, err
@@ -41,13 +41,13 @@ func (s *Statter) getCgroupStatter() (cgroupStatter, error) {
 		return nil, errNotContainerized
 	}
 
-	if s.isCgroupV2() {
+	if s.isCGroupV2() {
 		cgroupPath, err := currentProcCgroup(s.fs)
 		if err != nil {
 			return nil, xerrors.Errorf("get current cgroup: %w", err)
 		}
 
-		return newCgroupV2Statter(s.fs, cgroupPath), nil
+		return newCgroupV2Statter(s.fs, cgroupPath, 1)
 	}
 
 	return &cgroupV1Statter{fs: s.fs}, nil
@@ -102,7 +102,7 @@ func (s *Statter) ContainerCPU() (*Result, error) {
 	return r, nil
 }
 
-func (s *Statter) isCgroupV2() bool {
+func (s *Statter) isCGroupV2() bool {
 	return s.cgroupV2Detector(s.fs)
 }
 

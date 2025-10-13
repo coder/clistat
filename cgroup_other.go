@@ -2,6 +2,6 @@
 
 package clistat
 
-func isCgroupV2(path string) bool {
+func isCGroupV2(path string) bool {
 	return false
 }
