@@ -12,7 +12,7 @@ import (
 )
 
 // Paths for CGroupV2.
-// Ref: https://docs.kernel.org/admin-guide/cgroup-v2.html
+// Ref: https://docs.kernel.org/6.17/admin-guide/cgroup-v2.html
 const (
 	// Contains quota and period in microseconds separated by a space.
 	cgroupV2CPUMax = "cpu.max"
@@ -154,7 +154,7 @@ func (s cgroupV2Statter) memory(p Prefix) (*Result, error) {
 	memoryUsagePath := filepath.Join(s.path, cgroupV2MemoryUsageBytes)
 	memoryStatPath := filepath.Join(s.path, cgroupV2MemoryStat)
 
-	// https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
+	// https://docs.kernel.org/6.17/admin-guide/cgroup-v2.html#memory-interface-files
 	r := &Result{
 		Unit:   "B",
 		Prefix: p,
