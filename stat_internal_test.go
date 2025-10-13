@@ -143,7 +143,7 @@ func TestStatter(t *testing.T) {
 	// For container-specific measurements, everything we need
 	// can be read from the filesystem. We control the FS, so
 	// we control the data.
-	t.Run("CgroupV1", func(t *testing.T) {
+	t.Run("CGroupV1", func(t *testing.T) {
 		t.Parallel()
 
 		t.Run("ContainerCPU/Limit", func(t *testing.T) {
@@ -258,7 +258,7 @@ func TestStatter(t *testing.T) {
 		})
 	})
 
-	t.Run("CgroupV2", func(t *testing.T) {
+	t.Run("CGroupV2", func(t *testing.T) {
 		t.Parallel()
 
 		t.Run("ContainerCPU/Limit", func(t *testing.T) {
@@ -477,8 +477,8 @@ func TestCGroupV2Detection(t *testing.T) {
 			s, err := New(WithFS(tt.fs))
 			require.NoError(t, err)
 
-			isCgroupV2 := s.cgroupV2Detector(s.fs)
-			assert.Equal(t, hostISCGroupV2, isCgroupV2)
+			isCGroupV2 := s.cgroupV2Detector(s.fs)
+			assert.Equal(t, hostISCGroupV2, isCGroupV2)
 		})
 	}
 }
