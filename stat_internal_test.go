@@ -356,6 +356,27 @@ func TestStatter(t *testing.T) {
 				assert.Equal(t, "cores", cpu.Unit)
 			})
 
+			t.Run("CPU/LimitInParent", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2Kubernetes)
+				mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2CPUMax), "250000 100000")
+				fakeWait := func(time.Duration) {
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat), "usage_usec 100000")
+				}
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
+
+				require.NotNil(t, cpu)
+				assert.Equal(t, 1.0, cpu.Used)
+				require.NotNil(t, cpu.Total)
+				assert.Equal(t, 2.5, *cpu.Total)
+				assert.Equal(t, "cores", cpu.Unit)
+			})
+
 			t.Run("CPU/NoLimit", func(t *testing.T) {
 				t.Parallel()
 
@@ -379,6 +400,25 @@ func TestStatter(t *testing.T) {
 				t.Parallel()
 
 				fs := initFS(t, fsContainerCgroupV2KubernetesWithLimits)
+				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				mem, err := s.ContainerMemory(PrefixDefault)
+				require.NoError(t, err)
+
+				require.NotNil(t, mem)
+				assert.Equal(t, 268435456.0, mem.Used)
+				assert.NotNil(t, mem.Total)
+				assert.Equal(t, 1073741824.0, *mem.Total)
+				assert.Equal(t, "B", mem.Unit)
+			})
+
+			t.Run("Memory/LimitInParent", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2Kubernetes)
+				mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2MemoryMaxBytes), "1073741824")
+
 				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
 				require.NoError(t, err)
 
@@ -665,10 +705,10 @@ proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		filepath.Join(cgroupRootPath, "kubepods.slice/", cgroupV2CPUMax):                         "max 100000",
 		// cpu.max purposefully missing at the root cgroup
 
-		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryUsageBytes):         "max",
-		filepath.Join(cgroupRootPath, "kubepods.slice/kubepods-burstable.slice", cgroupV2MemoryUsageBytes): "max",
-		filepath.Join(cgroupRootPath, "kubepods.slice/", cgroupV2MemoryUsageBytes):                         "max",
-		filepath.Join(cgroupRootPath, cgroupV2MemoryUsageBytes):                                            "1073741824",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes):         "max",
+		filepath.Join(cgroupRootPath, "kubepods.slice/kubepods-burstable.slice", cgroupV2MemoryMaxBytes): "max",
+		filepath.Join(cgroupRootPath, "kubepods.slice/", cgroupV2MemoryMaxBytes):                         "max",
+		// memory.max purposefully missing at the root cgroup
 
 		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):          "usage_usec 0",
 		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryUsageBytes): "536870912",
