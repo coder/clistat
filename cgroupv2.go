@@ -14,9 +14,6 @@ import (
 // Paths for CGroupV2.
 // Ref: https://docs.kernel.org/admin-guide/cgroup-v2.html
 const (
-	// Contains a path to the cgroup
-	procSelfCgroup = "/proc/self/cgroup"
-
 	// Contains quota and period in microseconds separated by a space.
 	cgroupV2CPUMax = "cpu.max"
 	// Contains current CPU usage under usage_usec

@@ -12,9 +12,12 @@ import (
 	"tailscale.com/types/ptr"
 )
 
-// Path for cgroup
+// Paths for cgroup
 const (
 	cgroupRootPath = "/sys/fs/cgroup"
+
+	// Contains a path to the cgroup
+	procSelfCgroup = "/proc/self/cgroup"
 )
 
 const (
@@ -124,7 +127,7 @@ func currentProcCgroup(fs afero.Fs) (string, error) {
 
 	parts := strings.Split(strings.TrimSpace(string(data)), ":")
 	if len(parts) != 3 {
-		return "", xerrors.Errorf("parse cgroup: %w", err)
+		return "", xerrors.Errorf("parse %v: %w", procSelfCgroup, err)
 	}
 
 	return parts[2], nil
