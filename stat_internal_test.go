@@ -336,29 +336,77 @@ func TestStatter(t *testing.T) {
 		t.Run("Kubernetes", func(t *testing.T) {
 			t.Parallel()
 
-			fs := initFS(t, fsContainerCgroupV2Kubernetes)
-			fakeWait := func(time.Duration) {
-				mungeFS(t, fs, filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat), "usage_usec 100000")
-			}
-			s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(true))
-			require.NoError(t, err)
+			t.Run("CPU/Limit", func(t *testing.T) {
+				t.Parallel()
 
-			require.NoError(t, err)
-			cpu, err := s.ContainerCPU()
-			require.NoError(t, err)
+				fs := initFS(t, fsContainerCgroupV2KubernetesWithLimits)
+				fakeWait := func(time.Duration) {
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat), "usage_usec 100000")
+				}
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(true))
+				require.NoError(t, err)
 
-			require.NotNil(t, cpu)
-			assert.Equal(t, 1.0, cpu.Used)
-			require.Nil(t, cpu.Total)
-			assert.Equal(t, "cores", cpu.Unit)
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
 
-			mem, err := s.ContainerMemory(PrefixDefault)
-			require.NoError(t, err)
+				require.NotNil(t, cpu)
+				assert.Equal(t, 1.0, cpu.Used)
+				require.NotNil(t, cpu.Total)
+				assert.Equal(t, 2.5, *cpu.Total)
+				assert.Equal(t, "cores", cpu.Unit)
+			})
 
-			require.NotNil(t, mem)
-			assert.Equal(t, 268435456.0, mem.Used)
-			assert.Nil(t, mem.Total)
-			assert.Equal(t, "B", mem.Unit)
+			t.Run("CPU/NoLimit", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2Kubernetes)
+				fakeWait := func(time.Duration) {
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat), "usage_usec 100000")
+				}
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
+
+				require.NotNil(t, cpu)
+				assert.Equal(t, 1.0, cpu.Used)
+				require.Nil(t, cpu.Total)
+				assert.Equal(t, "cores", cpu.Unit)
+			})
+
+			t.Run("Memory/Limit", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2KubernetesWithLimits)
+				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				mem, err := s.ContainerMemory(PrefixDefault)
+				require.NoError(t, err)
+
+				require.NotNil(t, mem)
+				assert.Equal(t, 268435456.0, mem.Used)
+				assert.NotNil(t, mem.Total)
+				assert.Equal(t, 1073741824.0, *mem.Total)
+				assert.Equal(t, "B", mem.Unit)
+			})
+
+			t.Run("Memory/NoLimit", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2Kubernetes)
+				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				mem, err := s.ContainerMemory(PrefixDefault)
+				require.NoError(t, err)
+
+				require.NotNil(t, mem)
+				assert.Equal(t, 268435456.0, mem.Used)
+				assert.Nil(t, mem.Total)
+				assert.Equal(t, "B", mem.Unit)
+			})
 		})
 	})
 }
@@ -625,6 +673,19 @@ proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):          "usage_usec 0",
 		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryUsageBytes): "536870912",
 		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryStat):       "inactive_file 268435456",
+	}
+	fsContainerCgroupV2KubernetesWithLimits = map[string]string{
+		procOneCgroup:  "0::/",
+		procSelfCgroup: fmt.Sprintf("0::%s", fsContainerCgroupV2KubernetesPath),
+		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
+proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
+		sysCgroupType: "domain",
+
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):           "250000 100000",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):          "usage_usec 0",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes):   "1073741824",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryStat):       "inactive_file 268435456",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryUsageBytes): "536870912",
 	}
 	fsContainerCgroupV1 = map[string]string{
 		procOneCgroup:  "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
