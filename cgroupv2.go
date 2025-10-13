@@ -93,7 +93,11 @@ func (s cgroupV2Statter) cpuQuota() (float64, error) {
 		// 'max' and that there is no limit set. In this scenario, we call
 		// the parent to find its quota.
 		if s.parent != nil {
-			return s.parent.cpuQuota()
+			total, err := s.parent.cpuQuota()
+			if err != nil {
+				return 0, xerrors.Errorf("get parent cpu quota: %w", err)
+			}
+			return total, nil
 		}
 
 		return -1, nil
@@ -132,7 +136,11 @@ func (s cgroupV2Statter) memoryMax() (*float64, error) {
 		// If the memory limit is max, and we have a parent, we shall call
 		// the parent to find its maximum memory value.
 		if s.parent != nil {
-			return s.parent.memoryMax()
+			result, err := s.parent.memoryMax()
+			if err != nil {
+				return nil, xerrors.Errorf("read parent memory max: %w", err)
+			}
+			return result, nil
 		}
 
 		// We have no parent, and no max memory limit, so there is no memory limit.
