@@ -33,10 +33,10 @@ const (
 	// allow 10 to give us some headroom. If this limit is reached
 	// in a real world setting, we should increase it and ensure
 	// valid headroom is given.
-	maxSupportCgroupDepth = 10
+	maxSupportedCgroupDepth = 10
 )
 
-var errExceededMaxSupportedCgroupDepth = errors.New("exceeded max supported cgroup depth")
+var errExceededMaxSupportedCgroupDepth = xerrors.Errorf("exceeded max supported cgroup depth of %d", maxSupportedCgroupDepth)
 
 type cgroupV2Statter struct {
 	parent *cgroupV2Statter
@@ -47,7 +47,7 @@ type cgroupV2Statter struct {
 func newCgroupV2Statter(fs afero.Fs, path string, depth int) (*cgroupV2Statter, error) {
 	var parent *cgroupV2Statter
 
-	if depth >= maxSupportCgroupDepth {
+	if depth >= maxSupportedCgroupDepth {
 		return nil, errExceededMaxSupportedCgroupDepth
 	}
 

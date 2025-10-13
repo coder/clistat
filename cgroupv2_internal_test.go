@@ -32,7 +32,7 @@ func TestRecursiveCreation(t *testing.T) {
 			expectError: true,
 		},
 		{
-			startDepth:  maxSupportCgroupDepth + 1,
+			startDepth:  maxSupportedCgroupDepth + 1,
 			path:        "/a/very/large/depth/that/should/absolutely/fail/because/it/is/too/deep",
 			expectError: true,
 		},
