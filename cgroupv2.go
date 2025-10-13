@@ -122,7 +122,7 @@ func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
 	return float64(quotaUs) / float64(periodUs), nil
 }
 
-func (s cgroupV2Statter) memoryMax() (*float64, error) {
+func (s cgroupV2Statter) memoryMaxBytes() (*float64, error) {
 	memoryMaxPath := filepath.Join(s.path, cgroupV2MemoryMaxBytes)
 
 	maxUsageBytes, err := readInt64(s.fs, memoryMaxPath)
@@ -136,7 +136,7 @@ func (s cgroupV2Statter) memoryMax() (*float64, error) {
 		// If the memory limit is max, and we have a parent, we shall call
 		// the parent to find its maximum memory value.
 		if s.parent != nil {
-			result, err := s.parent.memoryMax()
+			result, err := s.parent.memoryMaxBytes()
 			if err != nil {
 				return nil, xerrors.Errorf("read parent memory max: %w", err)
 			}
@@ -159,7 +159,7 @@ func (s cgroupV2Statter) memory(p Prefix) (*Result, error) {
 		Unit:   "B",
 		Prefix: p,
 	}
-	if total, err := s.memoryMax(); err != nil {
+	if total, err := s.memoryMaxBytes(); err != nil {
 		return nil, xerrors.Errorf("read memory total: %w", err)
 	} else {
 		r.Total = total
