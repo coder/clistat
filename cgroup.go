@@ -3,6 +3,7 @@ package clistat
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"strconv"
 	"strings"
 
@@ -11,9 +12,12 @@ import (
 	"tailscale.com/types/ptr"
 )
 
-// Path for cgroup
+// Paths for cgroup
 const (
-	cgroupPath = "/sys/fs/cgroup"
+	cgroupRootPath = "/sys/fs/cgroup"
+
+	// Contains a path to the cgroup
+	procSelfCgroup = "/proc/self/cgroup"
 )
 
 const (
@@ -23,22 +27,33 @@ const (
 	cgroupV2MagicNumber = 0x63677270
 )
 
+var errNotContainerized = errors.New("not containerized")
+
 type cgroupStatter interface {
 	cpuUsed() (used float64, err error)
 	cpuTotal() (total float64, err error)
 	memory(p Prefix) (*Result, error)
 }
 
-func (s *Statter) getCGroupStatter() cgroupStatter {
-	if ok, err := s.IsContainerized(); err != nil || !ok {
-		return nil
+func (s *Statter) getCGroupStatter() (cgroupStatter, error) {
+	isContainerized, err := s.IsContainerized()
+	if err != nil {
+		return nil, err
+	}
+	if !isContainerized {
+		return nil, errNotContainerized
 	}
 
 	if s.isCGroupV2() {
-		return &cgroupV2Statter{fs: s.fs}
+		cgroupPath, err := currentProcCgroup(s.fs)
+		if err != nil {
+			return nil, xerrors.Errorf("get current cgroup: %w", err)
+		}
+
+		return newCgroupV2Statter(s.fs, cgroupPath, 1)
 	}
 
-	return &cgroupV1Statter{fs: s.fs}
+	return &cgroupV1Statter{fs: s.fs}, nil
 }
 
 // ContainerCPU returns the CPU usage of the container cgroup.
@@ -102,6 +117,20 @@ func (s *Statter) ContainerMemory(p Prefix) (*Result, error) {
 	}
 
 	return s.cgroupStatter.memory(p)
+}
+
+func currentProcCgroup(fs afero.Fs) (string, error) {
+	data, err := afero.ReadFile(fs, procSelfCgroup)
+	if err != nil {
+		return "", xerrors.Errorf("read %v: %w", procSelfCgroup, err)
+	}
+
+	parts := strings.Split(strings.TrimSpace(string(data)), ":")
+	if len(parts) != 3 {
+		return "", xerrors.Errorf("parse %v: %w", procSelfCgroup, err)
+	}
+
+	return parts[2], nil
 }
 
 // read an int64 value from path

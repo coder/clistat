@@ -1,7 +1,9 @@
 package clistat
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -264,7 +266,7 @@ func TestStatter(t *testing.T) {
 
 			fs := initFS(t, fsContainerCgroupV2)
 			fakeWait := func(time.Duration) {
-				mungeFS(t, fs, cgroupV2CPUStat, "usage_usec 100000")
+				mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUStat), "usage_usec 100000")
 			}
 			s, err := New(WithFS(fs), withWait(fakeWait), withIsCGroupV2(true))
 
@@ -284,26 +286,7 @@ func TestStatter(t *testing.T) {
 
 			fs := initFS(t, fsContainerCgroupV2NoLimit)
 			fakeWait := func(time.Duration) {
-				mungeFS(t, fs, cgroupV2CPUStat, "usage_usec 100000")
-			}
-			s, err := New(WithFS(fs), withNproc(2), withWait(fakeWait), withIsCGroupV2(true))
-			require.NoError(t, err)
-
-			cpu, err := s.ContainerCPU()
-			require.NoError(t, err)
-
-			require.NotNil(t, cpu)
-			assert.Equal(t, 1.0, cpu.Used)
-			require.Nil(t, cpu.Total)
-			assert.Equal(t, "cores", cpu.Unit)
-		})
-
-		t.Run("ContainerCPU/MissingCPUMax", func(t *testing.T) {
-			t.Parallel()
-
-			fs := initFS(t, fsContainerCgroupV2NoCPUMax)
-			fakeWait := func(time.Duration) {
-				mungeFS(t, fs, cgroupV2CPUStat, "usage_usec 100000")
+				mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUStat), "usage_usec 100000")
 			}
 			s, err := New(WithFS(fs), withNproc(2), withWait(fakeWait), withIsCGroupV2(true))
 			require.NoError(t, err)
@@ -349,6 +332,122 @@ func TestStatter(t *testing.T) {
 			assert.Nil(t, mem.Total)
 			assert.Equal(t, "B", mem.Unit)
 		})
+
+		t.Run("Kubernetes", func(t *testing.T) {
+			t.Parallel()
+
+			t.Run("CPU/Limit", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2KubernetesWithLimits)
+				fakeWait := func(time.Duration) {
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat), "usage_usec 100000")
+				}
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCGroupV2(true))
+				require.NoError(t, err)
+
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
+
+				require.NotNil(t, cpu)
+				assert.Equal(t, 1.0, cpu.Used)
+				require.NotNil(t, cpu.Total)
+				assert.Equal(t, 2.5, *cpu.Total)
+				assert.Equal(t, "cores", cpu.Unit)
+			})
+
+			t.Run("CPU/LimitInParent", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2Kubernetes)
+				mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2CPUMax), "250000 100000")
+				fakeWait := func(time.Duration) {
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat), "usage_usec 100000")
+				}
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCGroupV2(true))
+				require.NoError(t, err)
+
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
+
+				require.NotNil(t, cpu)
+				assert.Equal(t, 1.0, cpu.Used)
+				require.NotNil(t, cpu.Total)
+				assert.Equal(t, 2.5, *cpu.Total)
+				assert.Equal(t, "cores", cpu.Unit)
+			})
+
+			t.Run("CPU/NoLimit", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2Kubernetes)
+				fakeWait := func(time.Duration) {
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat), "usage_usec 100000")
+				}
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCGroupV2(true))
+				require.NoError(t, err)
+
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
+
+				require.NotNil(t, cpu)
+				assert.Equal(t, 1.0, cpu.Used)
+				require.Nil(t, cpu.Total)
+				assert.Equal(t, "cores", cpu.Unit)
+			})
+
+			t.Run("Memory/Limit", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2KubernetesWithLimits)
+				s, err := New(WithFS(fs), withNoWait, withIsCGroupV2(true))
+				require.NoError(t, err)
+
+				mem, err := s.ContainerMemory(PrefixDefault)
+				require.NoError(t, err)
+
+				require.NotNil(t, mem)
+				assert.Equal(t, 268435456.0, mem.Used)
+				assert.NotNil(t, mem.Total)
+				assert.Equal(t, 1073741824.0, *mem.Total)
+				assert.Equal(t, "B", mem.Unit)
+			})
+
+			t.Run("Memory/LimitInParent", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2Kubernetes)
+				mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2MemoryMaxBytes), "1073741824")
+
+				s, err := New(WithFS(fs), withNoWait, withIsCGroupV2(true))
+				require.NoError(t, err)
+
+				mem, err := s.ContainerMemory(PrefixDefault)
+				require.NoError(t, err)
+
+				require.NotNil(t, mem)
+				assert.Equal(t, 268435456.0, mem.Used)
+				assert.NotNil(t, mem.Total)
+				assert.Equal(t, 1073741824.0, *mem.Total)
+				assert.Equal(t, "B", mem.Unit)
+			})
+
+			t.Run("Memory/NoLimit", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2Kubernetes)
+				s, err := New(WithFS(fs), withNoWait, withIsCGroupV2(true))
+				require.NoError(t, err)
+
+				mem, err := s.ContainerMemory(PrefixDefault)
+				require.NoError(t, err)
+
+				require.NotNil(t, mem)
+				assert.Equal(t, 268435456.0, mem.Used)
+				assert.Nil(t, mem.Total)
+				assert.Equal(t, "B", mem.Unit)
+			})
+		})
 	})
 }
 
@@ -368,10 +467,6 @@ func TestCGroupV2Detection(t *testing.T) {
 		{
 			name: "OsFs/ReadOnly",
 			fs:   afero.NewReadOnlyFs(afero.NewOsFs()),
-		},
-		{
-			name: "InMemoryFs/MissingCPUMax",
-			fs:   initFS(t, fsContainerCgroupV2NoCPUMax),
 		},
 	}
 
@@ -553,54 +648,88 @@ func mungeFS(t testing.TB, fs afero.Fs, k, v string) {
 
 var (
 	fsHostOnly = map[string]string{
-		procOneCgroup: "0::/",
-		procMounts:    "/dev/sda1 / ext4 rw,relatime 0 0",
+		procOneCgroup:  "0::/",
+		procSelfCgroup: "0::/",
+		procMounts:     "/dev/sda1 / ext4 rw,relatime 0 0",
 	}
 	fsContainerSysbox = map[string]string{
-		procOneCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procOneCgroup:  "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procSelfCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
 		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
 sysboxfs /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		cgroupV2CPUMax:  "250000 100000",
 		cgroupV2CPUStat: "usage_usec 0",
 	}
+
+	cgroupV2Path        = "/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f"
 	fsContainerCgroupV2 = map[string]string{
-		procOneCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procOneCgroup:  fmt.Sprintf("0::%s", cgroupV2Path),
+		procSelfCgroup: fmt.Sprintf("0::%s", cgroupV2Path),
 		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
 proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
-		cgroupV2CPUMax:           "250000 100000",
-		cgroupV2CPUStat:          "usage_usec 0",
-		cgroupV2MemoryMaxBytes:   "1073741824",
-		cgroupV2MemoryUsageBytes: "536870912",
-		cgroupV2MemoryStat:       "inactive_file 268435456",
+
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUMax):           "250000 100000",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUStat):          "usage_usec 0",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2MemoryMaxBytes):   "1073741824",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2MemoryUsageBytes): "536870912",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2MemoryStat):       "inactive_file 268435456",
 	}
 	fsContainerCgroupV2NoLimit = map[string]string{
-		procOneCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procOneCgroup:  fmt.Sprintf("0::%s", cgroupV2Path),
+		procSelfCgroup: fmt.Sprintf("0::%s", cgroupV2Path),
 		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
 proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
-		cgroupV2CPUMax:           "max 100000",
-		cgroupV2CPUStat:          "usage_usec 0",
-		cgroupV2MemoryMaxBytes:   "max",
-		cgroupV2MemoryUsageBytes: "536870912",
-		cgroupV2MemoryStat:       "inactive_file 268435456",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUMax):           "max 100000",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUStat):          "usage_usec 0",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2MemoryMaxBytes):   "max",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2MemoryUsageBytes): "536870912",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2MemoryStat):       "inactive_file 268435456",
 	}
 	fsContainerCgroupV2PrivateCgroupns = map[string]string{
-		procOneCgroup: "0::/",
+		procOneCgroup:  "0::/",
+		procSelfCgroup: "0::/",
 		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
 proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		sysCgroupType: "domain",
 	}
-	fsContainerCgroupV2NoCPUMax = map[string]string{
-		procOneCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+	fsContainerCgroupV2KubernetesPath = "kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod.slice"
+	fsContainerCgroupV2Kubernetes     = map[string]string{
+		procOneCgroup:  "0::/",
+		procSelfCgroup: fmt.Sprintf("0::%s", fsContainerCgroupV2KubernetesPath),
 		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
 proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
-		// Note: cpu.max is intentionally missing
-		cgroupV2CPUStat:          "usage_usec 0",
-		cgroupV2MemoryMaxBytes:   "1073741824",
-		cgroupV2MemoryUsageBytes: "536870912",
-		cgroupV2MemoryStat:       "inactive_file 268435456",
+		sysCgroupType: "domain",
+
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):         "max 100000",
+		filepath.Join(cgroupRootPath, "kubepods.slice/kubepods-burstable.slice", cgroupV2CPUMax): "max 100000",
+		filepath.Join(cgroupRootPath, "kubepods.slice/", cgroupV2CPUMax):                         "max 100000",
+		// cpu.max purposefully missing at the root cgroup
+
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes):         "max",
+		filepath.Join(cgroupRootPath, "kubepods.slice/kubepods-burstable.slice", cgroupV2MemoryMaxBytes): "max",
+		filepath.Join(cgroupRootPath, "kubepods.slice/", cgroupV2MemoryMaxBytes):                         "max",
+		// memory.max purposefully missing at the root cgroup
+
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):          "usage_usec 0",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryUsageBytes): "536870912",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryStat):       "inactive_file 268435456",
+	}
+	fsContainerCgroupV2KubernetesWithLimits = map[string]string{
+		procOneCgroup:  "0::/",
+		procSelfCgroup: fmt.Sprintf("0::%s", fsContainerCgroupV2KubernetesPath),
+		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
+proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
+		sysCgroupType: "domain",
+
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):           "250000 100000",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):          "usage_usec 0",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes):   "1073741824",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryStat):       "inactive_file 268435456",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryUsageBytes): "536870912",
 	}
 	fsContainerCgroupV1 = map[string]string{
-		procOneCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procOneCgroup:  "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procSelfCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
 		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
 proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		cgroupV1CPUAcctUsage:        "0",
@@ -611,7 +740,8 @@ proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		cgroupV1MemoryStat:          "total_inactive_file 268435456",
 	}
 	fsContainerCgroupV1NoLimit = map[string]string{
-		procOneCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procOneCgroup:  "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procSelfCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
 		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
 proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		cgroupV1CPUAcctUsage:        "0",
@@ -622,7 +752,8 @@ proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		cgroupV1MemoryStat:          "total_inactive_file 268435456",
 	}
 	fsContainerCgroupV1DockerNoMemoryLimit = map[string]string{
-		procOneCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procOneCgroup:  "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procSelfCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
 		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
 proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		cgroupV1CPUAcctUsage:        "0",
@@ -633,7 +764,8 @@ proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		cgroupV1MemoryStat:          "total_inactive_file 268435456",
 	}
 	fsContainerCgroupV1AltPath = map[string]string{
-		procOneCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procOneCgroup:  "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
+		procSelfCgroup: "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
 		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
 proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		"/sys/fs/cgroup/cpuacct/cpuacct.usage": "0",
