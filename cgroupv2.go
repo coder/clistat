@@ -27,7 +27,16 @@ const (
 	cgroupV2MemoryMaxBytes = "memory.max"
 	// Other memory stats - we are interested in total_inactive_file
 	cgroupV2MemoryStat = "memory.stat"
+
+	// What is the maximum cgroup depth we support?
+	// We only expect to see a depth of around 3-4 at max, but we
+	// allow 10 to give us some headroom. If this limit is reached
+	// in a real world setting, we should increase it and ensure
+	// valid headroom is given.
+	maxSupportCgroupDepth = 10
 )
+
+var errExceededMaxSupportedCgroupDepth = errors.New("exceeded max supported cgroup depth")
 
 type cgroupV2Statter struct {
 	parent *cgroupV2Statter
@@ -35,19 +44,27 @@ type cgroupV2Statter struct {
 	fs     afero.Fs
 }
 
-func newCgroupV2Statter(fs afero.Fs, path string) *cgroupV2Statter {
+func newCgroupV2Statter(fs afero.Fs, path string, depth int) (*cgroupV2Statter, error) {
 	var parent *cgroupV2Statter
+
+	if depth == maxSupportCgroupDepth {
+		return nil, errExceededMaxSupportedCgroupDepth
+	}
 
 	path = filepath.Clean(path)
 	if parentPath := filepath.Dir(path); parentPath != path {
-		parent = newCgroupV2Statter(fs, parentPath)
+		var err error
+		parent, err = newCgroupV2Statter(fs, parentPath, depth+1)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &cgroupV2Statter{
 		parent: parent,
 		path:   filepath.Join(cgroupRootPath, path),
 		fs:     fs,
-	}
+	}, nil
 }
 
 func (s cgroupV2Statter) cpuUsed() (used float64, err error) {
