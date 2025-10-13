@@ -11,7 +11,7 @@ import (
 	"tailscale.com/types/ptr"
 )
 
-// Paths for CGroupV2.
+// Paths for CgroupV2.
 // Ref: https://docs.kernel.org/6.17/admin-guide/cgroup-v2.html
 const (
 	// Contains quota and period in microseconds separated by a space.
