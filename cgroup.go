@@ -125,12 +125,20 @@ func currentProcCgroup(fs afero.Fs) (string, error) {
 		return "", xerrors.Errorf("read %v: %w", procSelfCgroup, err)
 	}
 
-	parts := strings.Split(strings.TrimSpace(string(data)), ":")
-	if len(parts) != 3 {
-		return "", xerrors.Errorf("parse %v: %w", procSelfCgroup, err)
+	entries := strings.Split(strings.TrimSpace(string(data)), "\n")
+
+	for _, entry := range entries {
+		parts := strings.Split(strings.TrimSpace(entry), ":")
+		if len(parts) != 3 {
+			return "", xerrors.Errorf("parse entry %v: %w", procSelfCgroup, err)
+		}
+
+		if parts[0] == "0" {
+			return parts[2], nil
+		}
 	}
 
-	return parts[2], nil
+	return "", xerrors.Errorf("no cgroup entry for hierarchy 0 found")
 }
 
 // read an int64 value from path
