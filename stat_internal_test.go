@@ -396,6 +396,28 @@ func TestStatter(t *testing.T) {
 				assert.Equal(t, "cores", cpu.Unit)
 			})
 
+			t.Run("CPU/InitScopeFallback", func(t *testing.T) {
+				t.Parallel()
+
+				// Test RKE2/sysbox scenario where /init.scope cgroup doesn't have
+				// cpu.max but the root cgroup does. The period should be read from
+				// the parent (root) cgroup.
+				fs := initFS(t, fsContainerCgroupV2InitScope)
+				fakeWait := func(time.Duration) {
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, "init.scope", cgroupV2CPUStat), "usage_usec 100000")
+				}
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
+
+				require.NotNil(t, cpu)
+				assert.Equal(t, 1.0, cpu.Used)
+				require.Nil(t, cpu.Total) // quota is "max" so no limit
+				assert.Equal(t, "cores", cpu.Unit)
+			})
+
 			t.Run("Memory/Limit", func(t *testing.T) {
 				t.Parallel()
 
@@ -726,6 +748,24 @@ proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes):   "1073741824",
 		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryStat):       "inactive_file 268435456",
 		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryUsageBytes): "536870912",
+	}
+	// fsContainerCgroupV2InitScope simulates RKE2/sysbox environment where
+	// the cgroup path is /init.scope and cpu.max does not exist at that level
+	// but does exist at the root cgroup. This tests the parent fallback logic.
+	fsContainerCgroupV2InitScope = map[string]string{
+		procOneCgroup:  "0::/",
+		procSelfCgroup: "0::/init.scope",
+		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
+proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0
+sysboxfs /proc/sys sysboxfs rw,nosuid,nodev,noexec,relatime 0 0`,
+		sysCgroupType: "domain",
+
+		// cpu.max purposefully missing at /init.scope level
+		filepath.Join(cgroupRootPath, cgroupV2CPUMax):                         "max 100000",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2CPUStat):          "usage_usec 0",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryMaxBytes):   "max",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryStat):       "inactive_file 268435456",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryUsageBytes): "536870912",
 	}
 	fsContainerCgroupV1 = map[string]string{
 		procOneCgroup:  "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",

@@ -66,18 +66,17 @@ func newCgroupV2Statter(fs afero.Fs, path string, depth int) (*cgroupV2Statter, 
 
 func (s cgroupV2Statter) cpuUsed() (used float64, err error) {
 	cpuStatPath := filepath.Join(s.path, cgroupV2CPUStat)
-	cpuMaxPath := filepath.Join(s.path, cgroupV2CPUMax)
 
 	usageUs, err := readInt64Prefix(s.fs, cpuStatPath, "usage_usec")
 	if err != nil {
 		return 0, xerrors.Errorf("get cgroupv2 cpu used: %w", err)
 	}
-	periodUs, err := readInt64SepIdx(s.fs, cpuMaxPath, " ", 1)
+	periodUs, err := s.cpuPeriod()
 	if err != nil {
 		return 0, xerrors.Errorf("get cpu period: %w", err)
 	}
 
-	return float64(usageUs) / float64(periodUs), nil
+	return float64(usageUs) / periodUs, nil
 }
 
 func (s cgroupV2Statter) cpuQuota() (float64, error) {
@@ -106,10 +105,36 @@ func (s cgroupV2Statter) cpuQuota() (float64, error) {
 	return float64(quotaUs), nil
 }
 
-func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
+func (s cgroupV2Statter) cpuPeriod() (float64, error) {
 	cpuMaxPath := filepath.Join(s.path, cgroupV2CPUMax)
 
 	periodUs, err := readInt64SepIdx(s.fs, cpuMaxPath, " ", 1)
+	if err != nil {
+		if !errors.Is(err, strconv.ErrSyntax) && !errors.Is(err, fs.ErrNotExist) {
+			return 0, xerrors.Errorf("get cpu period: %w", err)
+		}
+
+		// If the value is not a valid integer or the cpu.max file does
+		// not exist, we call the parent to find its period. This can happen
+		// in system-level cgroups like init.scope where cpu.max may not exist.
+		if s.parent != nil {
+			period, err := s.parent.cpuPeriod()
+			if err != nil {
+				return 0, xerrors.Errorf("get parent cpu period: %w", err)
+			}
+			return period, nil
+		}
+
+		// No parent and no period found. This should not happen in a properly
+		// configured cgroup hierarchy, but return an error to avoid division by zero.
+		return 0, xerrors.Errorf("cpu period not found in cgroup hierarchy")
+	}
+
+	return float64(periodUs), nil
+}
+
+func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
+	periodUs, err := s.cpuPeriod()
 	if err != nil {
 		return 0, xerrors.Errorf("get cpu period: %w", err)
 	}
@@ -119,7 +144,7 @@ func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
 		return 0, xerrors.Errorf("get cpu quota: %w", err)
 	}
 
-	return float64(quotaUs) / float64(periodUs), nil
+	return quotaUs / periodUs, nil
 }
 
 func (s cgroupV2Statter) memoryMaxBytes() (*float64, error) {
