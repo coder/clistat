@@ -26,7 +26,8 @@ const (
 	cgroupV2MemoryStat = "memory.stat"
 
 	// Default period for cpu.max as documented in the kernel docs.
-	// The default is "max 100000".
+	// The default period is 100000 microseconds (100ms).
+	// Ref: https://docs.kernel.org/6.17/admin-guide/cgroup-v2.html#cpu-interface-files
 	cgroupV2DefaultPeriodUs = 100000
 
 	// What is the maximum cgroup depth we support?
@@ -130,8 +131,6 @@ func (s cgroupV2Statter) cpuPeriod() (float64, error) {
 		}
 
 		// No parent and no period found in the cgroup hierarchy.
-		// Per kernel docs, the default period is 100000 microseconds (100ms).
-		// Ref: https://docs.kernel.org/6.17/admin-guide/cgroup-v2.html#cpu-interface-files
 		return cgroupV2DefaultPeriodUs, nil
 	}
 
