@@ -418,6 +418,28 @@ func TestStatter(t *testing.T) {
 				assert.Equal(t, "cores", cpu.Unit)
 			})
 
+			t.Run("CPU/InitScopeDefaultPeriod", func(t *testing.T) {
+				t.Parallel()
+
+				// Test scenario where cpu.max doesn't exist at any level in the
+				// hierarchy. Per kernel docs, the default period is 100000us (100ms).
+				fs := initFS(t, fsContainerCgroupV2InitScopeNoCPUMax)
+				fakeWait := func(time.Duration) {
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, "init.scope", cgroupV2CPUStat), "usage_usec 100000")
+				}
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
+
+				require.NotNil(t, cpu)
+				// With default period of 100000us, usage_usec 100000 = 1.0 core
+				assert.Equal(t, 1.0, cpu.Used)
+				require.Nil(t, cpu.Total) // no limit anywhere
+				assert.Equal(t, "cores", cpu.Unit)
+			})
+
 			t.Run("Memory/Limit", func(t *testing.T) {
 				t.Parallel()
 
@@ -762,6 +784,22 @@ sysboxfs /proc/sys sysboxfs rw,nosuid,nodev,noexec,relatime 0 0`,
 
 		// cpu.max purposefully missing at /init.scope level
 		filepath.Join(cgroupRootPath, cgroupV2CPUMax):                         "max 100000",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2CPUStat):          "usage_usec 0",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryMaxBytes):   "max",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryStat):       "inactive_file 268435456",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryUsageBytes): "536870912",
+	}
+	// fsContainerCgroupV2InitScopeNoCPUMax simulates a scenario where cpu.max
+	// doesn't exist at any level in the hierarchy. Tests the default period fallback.
+	fsContainerCgroupV2InitScopeNoCPUMax = map[string]string{
+		procOneCgroup:  "0::/",
+		procSelfCgroup: "0::/init.scope",
+		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
+proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0
+sysboxfs /proc/sys sysboxfs rw,nosuid,nodev,noexec,relatime 0 0`,
+		sysCgroupType: "domain",
+
+		// cpu.max purposefully missing at all levels to test default period
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2CPUStat):          "usage_usec 0",
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryMaxBytes):   "max",
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryStat):       "inactive_file 268435456",

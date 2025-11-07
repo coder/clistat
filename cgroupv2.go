@@ -25,6 +25,10 @@ const (
 	// Other memory stats - we are interested in total_inactive_file
 	cgroupV2MemoryStat = "memory.stat"
 
+	// Default period for cpu.max as documented in the kernel docs.
+	// The default is "max 100000" where 100000 is 100ms in microseconds.
+	cgroupV2DefaultPeriodUs = 100000
+
 	// What is the maximum cgroup depth we support?
 	// We only expect to see a depth of around 3-4 at max, but we
 	// allow 10 to give us some headroom. If this limit is reached
@@ -125,9 +129,10 @@ func (s cgroupV2Statter) cpuPeriod() (float64, error) {
 			return period, nil
 		}
 
-		// No parent and no period found. This should not happen in a properly
-		// configured cgroup hierarchy, but return an error to avoid division by zero.
-		return 0, xerrors.Errorf("cpu period not found in cgroup hierarchy")
+		// No parent and no period found in the cgroup hierarchy.
+		// Per kernel docs, the default period is 100000 microseconds (100ms).
+		// Ref: https://docs.kernel.org/admin-guide/cgroup-v2.html#cpu-interface-files
+		return cgroupV2DefaultPeriodUs, nil
 	}
 
 	return float64(periodUs), nil
