@@ -179,10 +179,59 @@ func (s cgroupV2Statter) memoryMaxBytes() (*float64, error) {
 	return ptr.To(float64(maxUsageBytes)), nil
 }
 
-func (s cgroupV2Statter) memory(p Prefix) (*Result, error) {
+func (s cgroupV2Statter) memoryCurrentBytes() (int64, error) {
 	memoryUsagePath := filepath.Join(s.path, cgroupV2MemoryUsageBytes)
+
+	currUsageBytes, err := readInt64(s.fs, memoryUsagePath)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return 0, xerrors.Errorf("read memory current: %w", err)
+		}
+
+		// If the memory current file does not exist, and we have a parent,
+		// we shall call the parent to find its current memory value.
+		if s.parent != nil {
+			result, err := s.parent.memoryCurrentBytes()
+			if err != nil {
+				return 0, xerrors.Errorf("read parent memory current: %w", err)
+			}
+			return result, nil
+		}
+
+		// We have no parent, and no memory current file, so return the error.
+		return 0, xerrors.Errorf("read memory current: %w", err)
+	}
+
+	return currUsageBytes, nil
+}
+
+func (s cgroupV2Statter) memoryInactiveFileBytes() (int64, error) {
 	memoryStatPath := filepath.Join(s.path, cgroupV2MemoryStat)
 
+	inactiveFileBytes, err := readInt64Prefix(s.fs, memoryStatPath, "inactive_file")
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return 0, xerrors.Errorf("read memory stat inactive_file: %w", err)
+		}
+
+		// If the memory stat file does not exist, and we have a parent,
+		// we shall call the parent to find its inactive_file value.
+		if s.parent != nil {
+			result, err := s.parent.memoryInactiveFileBytes()
+			if err != nil {
+				return 0, xerrors.Errorf("read parent memory stat inactive_file: %w", err)
+			}
+			return result, nil
+		}
+
+		// We have no parent, and no memory stat file, so return the error.
+		return 0, xerrors.Errorf("read memory stat inactive_file: %w", err)
+	}
+
+	return inactiveFileBytes, nil
+}
+
+func (s cgroupV2Statter) memory(p Prefix) (*Result, error) {
 	// https://docs.kernel.org/6.17/admin-guide/cgroup-v2.html#memory-interface-files
 	r := &Result{
 		Unit:   "B",
@@ -194,12 +243,12 @@ func (s cgroupV2Statter) memory(p Prefix) (*Result, error) {
 		r.Total = total
 	}
 
-	currUsageBytes, err := readInt64(s.fs, memoryUsagePath)
+	currUsageBytes, err := s.memoryCurrentBytes()
 	if err != nil {
 		return nil, xerrors.Errorf("read memory usage: %w", err)
 	}
 
-	inactiveFileBytes, err := readInt64Prefix(s.fs, memoryStatPath, "inactive_file")
+	inactiveFileBytes, err := s.memoryInactiveFileBytes()
 	if err != nil {
 		return nil, xerrors.Errorf("read memory stats: %w", err)
 	}
