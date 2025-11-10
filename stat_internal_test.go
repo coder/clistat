@@ -495,27 +495,7 @@ func TestStatter(t *testing.T) {
 			t.Run("Memory/CurrentInParent", func(t *testing.T) {
 				t.Parallel()
 
-				// Child cgroup has memory.stat but NOT memory.current
-				// Root cgroup has both, so child should inherit memory.current from parent
-				testData := map[string]string{
-					procOneCgroup:  "0::/",
-					procSelfCgroup: fmt.Sprintf("0::%s", fsContainerCgroupV2KubernetesPath),
-					procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
-proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
-					sysCgroupType: "domain",
-
-					// Child has memory.stat but NOT memory.current
-					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):        "usage_usec 0",
-					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryStat):    "inactive_file 268435456",
-					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):        "max 100000",
-					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes): "max",
-
-					// Root has memory.current that child should inherit
-					filepath.Join(cgroupRootPath, cgroupV2MemoryUsageBytes): "536870912",
-					filepath.Join(cgroupRootPath, cgroupV2MemoryStat):       "inactive_file 268435456",
-				}
-
-				fs := initFS(t, testData)
+				fs := initFS(t, fsContainerCgroupV2KubernetesMissingMemoryCurrent)
 				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
 				require.NoError(t, err)
 
@@ -530,27 +510,7 @@ proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 			t.Run("Memory/StatInParent", func(t *testing.T) {
 				t.Parallel()
 
-				// Child cgroup has memory.current but NOT memory.stat
-				// Root cgroup has both, so child should inherit memory.stat from parent
-				testData := map[string]string{
-					procOneCgroup:  "0::/",
-					procSelfCgroup: fmt.Sprintf("0::%s", fsContainerCgroupV2KubernetesPath),
-					procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
-proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
-					sysCgroupType: "domain",
-
-					// Child has memory.current but NOT memory.stat
-					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):          "usage_usec 0",
-					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryUsageBytes): "536870912",
-					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):           "max 100000",
-					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes):   "max",
-
-					// Root has memory.stat that child should inherit
-					filepath.Join(cgroupRootPath, cgroupV2MemoryStat):       "inactive_file 268435456",
-					filepath.Join(cgroupRootPath, cgroupV2MemoryUsageBytes): "536870912",
-				}
-
-				fs := initFS(t, testData)
+				fs := initFS(t, fsContainerCgroupV2KubernetesMissingMemoryStat)
 				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
 				require.NoError(t, err)
 
@@ -874,6 +834,36 @@ sysboxfs /proc/sys sysboxfs rw,nosuid,nodev,noexec,relatime 0 0`,
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryMaxBytes):   "max",
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryStat):       "inactive_file 268435456",
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryUsageBytes): "536870912",
+	}
+	// Variant where child has memory.stat but NOT memory.current (should inherit from root)
+	fsContainerCgroupV2KubernetesMissingMemoryCurrent = map[string]string{
+		procOneCgroup:  "0::/",
+		procSelfCgroup: fmt.Sprintf("0::%s", fsContainerCgroupV2KubernetesPath),
+		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
+proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
+		sysCgroupType: "domain",
+
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):        "max 100000",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):       "usage_usec 0",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes): "max",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryStat):    "inactive_file 268435456",
+		// memory.current purposefully missing at child - should inherit from root
+		filepath.Join(cgroupRootPath, cgroupV2MemoryUsageBytes): "536870912",
+	}
+	// Variant where child has memory.current but NOT memory.stat (should inherit from root)
+	fsContainerCgroupV2KubernetesMissingMemoryStat = map[string]string{
+		procOneCgroup:  "0::/",
+		procSelfCgroup: fmt.Sprintf("0::%s", fsContainerCgroupV2KubernetesPath),
+		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
+proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
+		sysCgroupType: "domain",
+
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):          "max 100000",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):         "usage_usec 0",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes):   "max",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryUsageBytes): "536870912",
+		// memory.stat purposefully missing at child - should inherit from root
+		filepath.Join(cgroupRootPath, cgroupV2MemoryStat): "inactive_file 268435456",
 	}
 	fsContainerCgroupV1 = map[string]string{
 		procOneCgroup:  "0::/docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f",
