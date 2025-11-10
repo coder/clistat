@@ -491,6 +491,76 @@ func TestStatter(t *testing.T) {
 				assert.Nil(t, mem.Total)
 				assert.Equal(t, "B", mem.Unit)
 			})
+
+			t.Run("Memory/CurrentInParent", func(t *testing.T) {
+				t.Parallel()
+
+				// Child cgroup has memory.stat but NOT memory.current
+				// Root cgroup has both, so child should inherit memory.current from parent
+				testData := map[string]string{
+					procOneCgroup:  "0::/",
+					procSelfCgroup: fmt.Sprintf("0::%s", fsContainerCgroupV2KubernetesPath),
+					procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
+proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
+					sysCgroupType: "domain",
+
+					// Child has memory.stat but NOT memory.current
+					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):        "usage_usec 0",
+					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryStat):    "inactive_file 268435456",
+					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):        "max 100000",
+					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes): "max",
+
+					// Root has memory.current that child should inherit
+					filepath.Join(cgroupRootPath, cgroupV2MemoryUsageBytes): "536870912",
+					filepath.Join(cgroupRootPath, cgroupV2MemoryStat):       "inactive_file 268435456",
+				}
+
+				fs := initFS(t, testData)
+				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				mem, err := s.ContainerMemory(PrefixDefault)
+				require.NoError(t, err)
+
+				require.NotNil(t, mem)
+				assert.Equal(t, 268435456.0, mem.Used)
+				assert.Equal(t, "B", mem.Unit)
+			})
+
+			t.Run("Memory/StatInParent", func(t *testing.T) {
+				t.Parallel()
+
+				// Child cgroup has memory.current but NOT memory.stat
+				// Root cgroup has both, so child should inherit memory.stat from parent
+				testData := map[string]string{
+					procOneCgroup:  "0::/",
+					procSelfCgroup: fmt.Sprintf("0::%s", fsContainerCgroupV2KubernetesPath),
+					procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
+proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
+					sysCgroupType: "domain",
+
+					// Child has memory.current but NOT memory.stat
+					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):          "usage_usec 0",
+					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryUsageBytes): "536870912",
+					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):           "max 100000",
+					filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes):   "max",
+
+					// Root has memory.stat that child should inherit
+					filepath.Join(cgroupRootPath, cgroupV2MemoryStat):       "inactive_file 268435456",
+					filepath.Join(cgroupRootPath, cgroupV2MemoryUsageBytes): "536870912",
+				}
+
+				fs := initFS(t, testData)
+				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				mem, err := s.ContainerMemory(PrefixDefault)
+				require.NoError(t, err)
+
+				require.NotNil(t, mem)
+				assert.Equal(t, 268435456.0, mem.Used)
+				assert.Equal(t, "B", mem.Unit)
+			})
 		})
 	})
 }
