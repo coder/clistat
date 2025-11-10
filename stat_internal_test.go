@@ -843,10 +843,10 @@ sysboxfs /proc/sys sysboxfs rw,nosuid,nodev,noexec,relatime 0 0`,
 proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		sysCgroupType: "domain",
 
-		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):        "max 100000",
-		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):       "usage_usec 0",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):         "max 100000",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):        "usage_usec 0",
 		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes): "max",
-		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryStat):    "inactive_file 268435456",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryStat):     "inactive_file 268435456",
 		// memory.current purposefully missing at child - should inherit from root
 		filepath.Join(cgroupRootPath, cgroupV2MemoryUsageBytes): "536870912",
 	}
@@ -858,8 +858,8 @@ proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
 		sysCgroupType: "domain",
 
-		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):          "max 100000",
-		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):         "usage_usec 0",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUMax):           "max 100000",
+		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2CPUStat):          "usage_usec 0",
 		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryMaxBytes):   "max",
 		filepath.Join(cgroupRootPath, fsContainerCgroupV2KubernetesPath, cgroupV2MemoryUsageBytes): "536870912",
 		// memory.stat purposefully missing at child - should inherit from root
