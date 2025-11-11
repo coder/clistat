@@ -69,13 +69,13 @@ func newCgroupV2Statter(fs afero.Fs, path string, depth int) (*cgroupV2Statter, 
 	}, nil
 }
 
-// getFromParentOrDefault attempts to get a value from the parent cgroup
+// getFromParentOrFallback attempts to get a value from the parent cgroup
 // when the current cgroup has no value set. If there is no parent, it
-// returns the default value.
-func getFromParentOrDefault[T any](
+// calls the fallback function to determine the return value.
+func getFromParentOrFallback[T any](
 	s *cgroupV2Statter,
 	getter func(*cgroupV2Statter) (T, error),
-	defaultValue T,
+	fallback func() (T, error),
 ) (T, error) {
 	if s.parent != nil {
 		result, err := getter(s.parent)
@@ -85,7 +85,7 @@ func getFromParentOrDefault[T any](
 		}
 		return result, nil
 	}
-	return defaultValue, nil
+	return fallback()
 }
 
 func (s cgroupV2Statter) cpuUsed() (used float64, err error) {
@@ -113,9 +113,10 @@ func (s cgroupV2Statter) cpuQuota() (float64, error) {
 		}
 
 		// If the value is not a valid integer, assume it is the string
-		// 'max' and that there is no limit set. In this scenario, we call
-		// the parent to find its quota.
-		return getFromParentOrDefault(&s, (*cgroupV2Statter).cpuQuota, -1.0)
+		// 'max' and that there is no limit set. Try the parent or return -1.
+		return getFromParentOrFallback(&s, (*cgroupV2Statter).cpuQuota, func() (float64, error) {
+			return -1.0, nil
+		})
 	}
 
 	return float64(quotaUs), nil
@@ -131,18 +132,11 @@ func (s cgroupV2Statter) cpuPeriod() (float64, error) {
 		}
 
 		// If the value is not a valid integer or the cpu.max file does
-		// not exist, we call the parent to find its period. This can happen
-		// in system-level cgroups like init.scope where cpu.max may not exist.
-		if s.parent != nil {
-			period, err := s.parent.cpuPeriod()
-			if err != nil {
-				return 0, xerrors.Errorf("get parent cpu period: %w", err)
-			}
-			return period, nil
-		}
-
-		// No parent and no period found in the cgroup hierarchy.
-		return cgroupV2DefaultPeriodUs, nil
+		// not exist, try the parent or return the default period. This can
+		// happen in system-level cgroups like init.scope where cpu.max may not exist.
+		return getFromParentOrFallback(&s, (*cgroupV2Statter).cpuPeriod, func() (float64, error) {
+			return cgroupV2DefaultPeriodUs, nil
+		})
 	}
 
 	return float64(periodUs), nil
@@ -172,11 +166,11 @@ func (s cgroupV2Statter) memoryMaxBytes() (*float64, error) {
 		}
 
 		// If the value is not a valid integer _or_ the memory max file
-		// does not exist, than we can assume that the limit is 'max'.
-		// If the memory limit is max, and we have a parent, we shall call
-		// the parent to find its maximum memory value.
-		// We have no parent, and no max memory limit, so there is no memory limit.
-		return getFromParentOrDefault(&s, (*cgroupV2Statter).memoryMaxBytes, nil)
+		// does not exist, we can assume that the limit is 'max'.
+		// Try the parent or return nil (no limit).
+		return getFromParentOrFallback(&s, (*cgroupV2Statter).memoryMaxBytes, func() (*float64, error) {
+			return nil, nil
+		})
 	}
 
 	return ptr.To(float64(maxUsageBytes)), nil
@@ -191,18 +185,10 @@ func (s cgroupV2Statter) memoryCurrentBytes() (int64, error) {
 			return 0, xerrors.Errorf("read memory current: %w", err)
 		}
 
-		// If the memory current file does not exist, and we have a parent,
-		// we shall call the parent to find its current memory value.
-		if s.parent != nil {
-			result, err := s.parent.memoryCurrentBytes()
-			if err != nil {
-				return 0, xerrors.Errorf("read parent memory current: %w", err)
-			}
-			return result, nil
-		}
-
-		// We have no parent, and no memory current file, so return the error.
-		return 0, xerrors.Errorf("read memory current: %w", err)
+		// If the memory current file does not exist, try the parent or return error.
+		return getFromParentOrFallback(&s, (*cgroupV2Statter).memoryCurrentBytes, func() (int64, error) {
+			return 0, xerrors.Errorf("read memory current: %w", err)
+		})
 	}
 
 	return currUsageBytes, nil
@@ -217,18 +203,10 @@ func (s cgroupV2Statter) memoryInactiveFileBytes() (int64, error) {
 			return 0, xerrors.Errorf("read memory stat inactive_file: %w", err)
 		}
 
-		// If the memory stat file does not exist, and we have a parent,
-		// we shall call the parent to find its inactive_file value.
-		if s.parent != nil {
-			result, err := s.parent.memoryInactiveFileBytes()
-			if err != nil {
-				return 0, xerrors.Errorf("read parent memory stat inactive_file: %w", err)
-			}
-			return result, nil
-		}
-
-		// We have no parent, and no memory stat file, so return the error.
-		return 0, xerrors.Errorf("read memory stat inactive_file: %w", err)
+		// If the memory stat file does not exist, try the parent or return error.
+		return getFromParentOrFallback(&s, (*cgroupV2Statter).memoryInactiveFileBytes, func() (int64, error) {
+			return 0, xerrors.Errorf("read memory stat inactive_file: %w", err)
+		})
 	}
 
 	return inactiveFileBytes, nil
