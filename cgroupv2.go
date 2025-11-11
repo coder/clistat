@@ -69,6 +69,25 @@ func newCgroupV2Statter(fs afero.Fs, path string, depth int) (*cgroupV2Statter, 
 	}, nil
 }
 
+// getFromParentOrDefault attempts to get a value from the parent cgroup
+// when the current cgroup has no value set. If there is no parent, it
+// returns the default value.
+func getFromParentOrDefault[T any](
+	s *cgroupV2Statter,
+	getter func(*cgroupV2Statter) (T, error),
+	defaultValue T,
+) (T, error) {
+	if s.parent != nil {
+		result, err := getter(s.parent)
+		if err != nil {
+			var zero T
+			return zero, xerrors.Errorf("read parent: %w", err)
+		}
+		return result, nil
+	}
+	return defaultValue, nil
+}
+
 func (s cgroupV2Statter) cpuUsed() (used float64, err error) {
 	cpuStatPath := filepath.Join(s.path, cgroupV2CPUStat)
 
@@ -96,15 +115,7 @@ func (s cgroupV2Statter) cpuQuota() (float64, error) {
 		// If the value is not a valid integer, assume it is the string
 		// 'max' and that there is no limit set. In this scenario, we call
 		// the parent to find its quota.
-		if s.parent != nil {
-			total, err := s.parent.cpuQuota()
-			if err != nil {
-				return 0, xerrors.Errorf("get parent cpu quota: %w", err)
-			}
-			return total, nil
-		}
-
-		return -1, nil
+		return getFromParentOrDefault(&s, (*cgroupV2Statter).cpuQuota, -1.0)
 	}
 
 	return float64(quotaUs), nil
@@ -164,16 +175,8 @@ func (s cgroupV2Statter) memoryMaxBytes() (*float64, error) {
 		// does not exist, than we can assume that the limit is 'max'.
 		// If the memory limit is max, and we have a parent, we shall call
 		// the parent to find its maximum memory value.
-		if s.parent != nil {
-			result, err := s.parent.memoryMaxBytes()
-			if err != nil {
-				return nil, xerrors.Errorf("read parent memory max: %w", err)
-			}
-			return result, nil
-		}
-
 		// We have no parent, and no max memory limit, so there is no memory limit.
-		return nil, nil
+		return getFromParentOrDefault(&s, (*cgroupV2Statter).memoryMaxBytes, nil)
 	}
 
 	return ptr.To(float64(maxUsageBytes)), nil
