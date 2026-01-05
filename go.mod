@@ -3,7 +3,7 @@ module github.com/coder/clistat
 go 1.23.1
 
 require (
-	cdr.dev/slog v1.6.1
+	cdr.dev/slog/v3 v3.0.0-rc1
 	github.com/elastic/go-sysinfo v1.15.1
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/spf13/afero v1.12.0
