@@ -128,9 +128,9 @@ func currentProcCgroup(fs afero.Fs) (string, error) {
 	entries := strings.Split(strings.TrimSpace(string(data)), "\n")
 
 	for _, entry := range entries {
-		parts := strings.Split(strings.TrimSpace(entry), ":")
+		parts := strings.SplitN(strings.TrimSpace(entry), ":", 3)
 		if len(parts) != 3 {
-			return "", xerrors.Errorf("parse entry %v: %w", procSelfCgroup, err)
+			return "", xerrors.Errorf("parse entry %v: expected at least 3 colon-separated fields in %q", procSelfCgroup, entry)
 		}
 
 		if parts[0] == "0" {

@@ -55,6 +55,22 @@ func TestCurrentProcCgroup(t *testing.T) {
 			expectPath: "/init.slice",
 		},
 		{
+			name:       "ExtraColonsInPath",
+			procFile:   `0::/system.slice/kubepods-burstable.slice:cri-containerd:d24f9cc`,
+			expectPath: "/system.slice/kubepods-burstable.slice:cri-containerd:d24f9cc",
+		},
+		{
+			name: "ExtraColonsInPathWithMixedHierarchy",
+			procFile: `1:net_cls:/init.slice
+0::/system.slice/kubepods.slice:cri-containerd:abc123`,
+			expectPath: "/system.slice/kubepods.slice:cri-containerd:abc123",
+		},
+		{
+			name:        "MalformedEntryTooFewFields",
+			procFile:    `0`,
+			expectError: "parse entry",
+		},
+		{
 			name:        "MissingHierarchy0",
 			procFile:    `1:net_cls:/`,
 			expectError: "no cgroup entry for hierarchy 0 found",
