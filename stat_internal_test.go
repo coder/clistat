@@ -507,6 +507,25 @@ func TestStatter(t *testing.T) {
 				assert.Equal(t, "B", mem.Unit)
 			})
 
+			t.Run("Memory/UsageFromLimitOwner", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2DockerInDocker)
+				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				mem, err := s.ContainerMemory(PrefixDefault)
+				require.NoError(t, err)
+
+				require.NotNil(t, mem)
+				// Usage comes from the root that owns memory.max, which
+				// includes the sibling /docker/<id> cgroup.
+				assert.Equal(t, 805306368.0, mem.Used)
+				require.NotNil(t, mem.Total)
+				assert.Equal(t, 1073741824.0, *mem.Total)
+				assert.Equal(t, "B", mem.Unit)
+			})
+
 			t.Run("Memory/StatInParent", func(t *testing.T) {
 				t.Parallel()
 
@@ -834,6 +853,31 @@ sysboxfs /proc/sys sysboxfs rw,nosuid,nodev,noexec,relatime 0 0`,
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryMaxBytes):   "max",
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryStat):       "inactive_file 268435456",
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryUsageBytes): "536870912",
+	}
+	// fsContainerCgroupV2DockerInDocker simulates a docker-in-docker workspace.
+	// The agent runs in /init.scope and a nested container runs in the
+	// sibling /docker/<id>. Only the container root sets memory.max, so
+	// usage must be read from the root to include both children.
+	fsContainerCgroupV2DockerInDocker = map[string]string{
+		procOneCgroup:  "0::/init.scope",
+		procSelfCgroup: "0::/init.scope",
+		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
+proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
+		sysCgroupType: "domain",
+
+		filepath.Join(cgroupRootPath, cgroupV2CPUMax):           "max 100000",
+		filepath.Join(cgroupRootPath, cgroupV2MemoryMaxBytes):   "1073741824",
+		filepath.Join(cgroupRootPath, cgroupV2MemoryUsageBytes): "939524096",
+		filepath.Join(cgroupRootPath, cgroupV2MemoryStat):       "inactive_file 134217728",
+
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2CPUStat):          "usage_usec 0",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryMaxBytes):   "max",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryUsageBytes): "67108864",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryStat):       "inactive_file 0",
+
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2MemoryMaxBytes):   "max",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2MemoryUsageBytes): "872415232",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2MemoryStat):       "inactive_file 134217728",
 	}
 	// Variant where child has memory.stat but NOT memory.current (should inherit from root)
 	fsContainerCgroupV2KubernetesMissingMemoryCurrent = map[string]string{

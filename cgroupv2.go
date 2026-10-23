@@ -156,7 +156,15 @@ func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
 	return quotaUs / periodUs, nil
 }
 
-func (s cgroupV2Statter) memoryMaxBytes() (*float64, error) {
+// memoryLimit is the effective memory.max and the cgroup that sets it.
+type memoryLimit struct {
+	owner *cgroupV2Statter
+	bytes float64
+}
+
+// memoryLimit returns the nearest cgroup, starting at s and walking up,
+// that sets memory.max. It returns nil when no cgroup sets a limit.
+func (s *cgroupV2Statter) memoryLimit() (*memoryLimit, error) {
 	memoryMaxPath := filepath.Join(s.path, cgroupV2MemoryMaxBytes)
 
 	maxUsageBytes, err := readInt64(s.fs, memoryMaxPath)
@@ -168,12 +176,27 @@ func (s cgroupV2Statter) memoryMaxBytes() (*float64, error) {
 		// If the value is not a valid integer _or_ the memory max file
 		// does not exist, we can assume that the limit is 'max'.
 		// Try the parent or return nil (no limit).
-		return getFromParentOrFallback(&s, (*cgroupV2Statter).memoryMaxBytes, func() (*float64, error) {
+		return getFromParentOrFallback(s, (*cgroupV2Statter).memoryLimit, func() (*memoryLimit, error) {
 			return nil, nil
 		})
 	}
 
-	return ptr.To(float64(maxUsageBytes)), nil
+	return &memoryLimit{owner: s, bytes: float64(maxUsageBytes)}, nil
+}
+
+// memoryUsedBytes returns memory.current minus inactive_file.
+func (s cgroupV2Statter) memoryUsedBytes() (int64, error) {
+	currUsageBytes, err := s.memoryCurrentBytes()
+	if err != nil {
+		return 0, xerrors.Errorf("read memory usage: %w", err)
+	}
+
+	inactiveFileBytes, err := s.memoryInactiveFileBytes()
+	if err != nil {
+		return 0, xerrors.Errorf("read memory stats: %w", err)
+	}
+
+	return currUsageBytes - inactiveFileBytes, nil
 }
 
 func (s cgroupV2Statter) memoryCurrentBytes() (int64, error) {
@@ -218,22 +241,36 @@ func (s cgroupV2Statter) memory(p Prefix) (*Result, error) {
 		Unit:   "B",
 		Prefix: p,
 	}
-	if total, err := s.memoryMaxBytes(); err != nil {
+	limit, err := s.memoryLimit()
+	if err != nil {
 		return nil, xerrors.Errorf("read memory total: %w", err)
-	} else {
-		r.Total = total
 	}
 
-	currUsageBytes, err := s.memoryCurrentBytes()
+	// Read usage from the cgroup that owns the limit so that used and
+	// total describe the same domain. Otherwise sibling cgroups under
+	// the limit owner (for example /docker/<id> next to /init.scope in
+	// docker-in-docker) would count against the limit but not the usage.
+	if limit != nil {
+		r.Total = ptr.To(limit.bytes)
+		if limit.owner.path != s.path {
+			used, err := limit.owner.memoryUsedBytes()
+			if err == nil {
+				r.Used = float64(used)
+				return r, nil
+			}
+			if !errors.Is(err, fs.ErrNotExist) {
+				return nil, xerrors.Errorf("read limit owner memory: %w", err)
+			}
+			// The limit owner does not expose usage files, so fall back
+			// to the process's own cgroup.
+		}
+	}
+
+	used, err := s.memoryUsedBytes()
 	if err != nil {
-		return nil, xerrors.Errorf("read memory usage: %w", err)
+		return nil, err
 	}
 
-	inactiveFileBytes, err := s.memoryInactiveFileBytes()
-	if err != nil {
-		return nil, xerrors.Errorf("read memory stats: %w", err)
-	}
-
-	r.Used = float64(currUsageBytes - inactiveFileBytes)
+	r.Used = float64(used)
 	return r, nil
 }
