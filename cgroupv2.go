@@ -157,6 +157,8 @@ func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
 }
 
 // memoryLimit is the effective memory.max and the cgroup that sets it.
+// owner is kept so usage can be read from the same cgroup the limit is
+// enforced on.
 type memoryLimit struct {
 	owner *cgroupV2Statter
 	bytes float64
@@ -184,7 +186,6 @@ func (s *cgroupV2Statter) memoryLimit() (*memoryLimit, error) {
 	return &memoryLimit{owner: s, bytes: float64(maxUsageBytes)}, nil
 }
 
-// memoryUsedBytes returns memory.current minus inactive_file.
 func (s cgroupV2Statter) memoryUsedBytes() (int64, error) {
 	currUsageBytes, err := s.memoryCurrentBytes()
 	if err != nil {
@@ -252,17 +253,18 @@ func (s cgroupV2Statter) memory(p Prefix) (*Result, error) {
 	// docker-in-docker) would count against the limit but not the usage.
 	if limit != nil {
 		r.Total = ptr.To(limit.bytes)
+
 		if limit.owner.path != s.path {
-			used, err := limit.owner.memoryUsedBytes()
-			if err == nil {
+			if used, err := limit.owner.memoryUsedBytes(); err != nil {
+				if !errors.Is(err, fs.ErrNotExist) {
+					return nil, xerrors.Errorf("read limit owner memory: %w", err)
+				}
+				// The limit owner does not expose usage files, so fall
+				// back to the process's own cgroup below.
+			} else {
 				r.Used = float64(used)
 				return r, nil
 			}
-			if !errors.Is(err, fs.ErrNotExist) {
-				return nil, xerrors.Errorf("read limit owner memory: %w", err)
-			}
-			// The limit owner does not expose usage files, so fall back
-			// to the process's own cgroup.
 		}
 	}
 
