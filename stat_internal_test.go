@@ -440,6 +440,32 @@ func TestStatter(t *testing.T) {
 				assert.Equal(t, "cores", cpu.Unit)
 			})
 
+			t.Run("CPU/UsageFromLimitOwner", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2DockerInDockerCPU)
+				fakeWait := func(time.Duration) {
+					// The root's usage includes both children: 10000us from
+					// /init.scope and 190000us from the sibling /docker/<id>.
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2CPUStat), "usage_usec 200000")
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, "init.scope", cgroupV2CPUStat), "usage_usec 10000")
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUStat), "usage_usec 190000")
+				}
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
+
+				require.NotNil(t, cpu)
+				// Usage comes from the root that owns cpu.max, which
+				// includes the sibling /docker/<id> cgroup.
+				assert.Equal(t, 2.0, cpu.Used)
+				require.NotNil(t, cpu.Total)
+				assert.Equal(t, 2.5, *cpu.Total)
+				assert.Equal(t, "cores", cpu.Unit)
+			})
+
 			t.Run("Memory/Limit", func(t *testing.T) {
 				t.Parallel()
 
@@ -818,6 +844,26 @@ sysboxfs /proc/sys sysboxfs rw,nosuid,nodev,noexec,relatime 0 0`,
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryMaxBytes):   "max",
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryStat):       "inactive_file 268435456",
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryUsageBytes): "536870912",
+	}
+	// fsContainerCgroupV2DockerInDockerCPU simulates a docker-in-docker workspace.
+	// The agent runs in /init.scope and a nested container runs in the
+	// sibling /docker/<id>. Only the container root sets cpu.max, so
+	// usage must be read from the root to include both children.
+	fsContainerCgroupV2DockerInDockerCPU = map[string]string{
+		procOneCgroup:  "0::/init.scope",
+		procSelfCgroup: "0::/init.scope",
+		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
+proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
+		sysCgroupType: "domain",
+
+		filepath.Join(cgroupRootPath, cgroupV2CPUMax):  "250000 100000",
+		filepath.Join(cgroupRootPath, cgroupV2CPUStat): "usage_usec 0",
+
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2CPUMax):  "max 100000",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2CPUStat): "usage_usec 0",
+
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUMax):  "max 100000",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUStat): "usage_usec 0",
 	}
 	// fsContainerCgroupV2InitScopeNoCPUMax simulates a scenario where cpu.max
 	// doesn't exist at any level in the hierarchy. Tests the default period fallback.

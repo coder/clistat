@@ -89,37 +89,78 @@ func getFromParentOrFallback[T any](
 }
 
 func (s cgroupV2Statter) cpuUsed() (used float64, err error) {
+	periodUs, err := s.cpuPeriod()
+	if err != nil {
+		return 0, xerrors.Errorf("get cpu period: %w", err)
+	}
+
+	limit, err := s.cpuLimit()
+	if err != nil {
+		return 0, xerrors.Errorf("get cpu quota: %w", err)
+	}
+
+	// Read usage from the cgroup that owns the limit so that used and
+	// total describe the same domain. Otherwise sibling cgroups under
+	// the limit owner (for example /docker/<id> next to /init.scope in
+	// docker-in-docker) would count against the limit but not the usage.
+	if limit != nil && limit.owner.path != s.path {
+		if usedUs, err := limit.owner.cpuUsedUs(); err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				return 0, xerrors.Errorf("read limit owner cpu: %w", err)
+			}
+			// The limit owner does not expose usage files, so fall
+			// back to the process's own cgroup below.
+		} else {
+			return float64(usedUs) / periodUs, nil
+		}
+	}
+
+	usedUs, err := s.cpuUsedUs()
+	if err != nil {
+		return 0, err
+	}
+
+	return float64(usedUs) / periodUs, nil
+}
+
+// cpuLimit is the effective cpu.max quota and the cgroup that sets it.
+// owner is kept so usage can be read from the same cgroup the limit is
+// enforced on.
+type cpuLimit struct {
+	owner   *cgroupV2Statter
+	quotaUs float64
+}
+
+// cpuLimit returns the nearest cgroup, starting at s and walking up,
+// that sets a cpu.max quota. It returns nil when no cgroup sets a limit.
+func (s *cgroupV2Statter) cpuLimit() (*cpuLimit, error) {
+	cpuMaxPath := filepath.Join(s.path, cgroupV2CPUMax)
+
+	quotaUs, err := readInt64SepIdx(s.fs, cpuMaxPath, " ", 0)
+	if err != nil {
+		if !errors.Is(err, strconv.ErrSyntax) && !errors.Is(err, fs.ErrNotExist) {
+			return nil, xerrors.Errorf("get cpu quota: %w", err)
+		}
+
+		// If the value is not a valid integer, assume it is the string
+		// 'max' and that there is no limit set. Try the parent or return nil (no limit).
+		return getFromParentOrFallback(s, (*cgroupV2Statter).cpuLimit, func() (*cpuLimit, error) {
+			return nil, nil
+		})
+	}
+
+	return &cpuLimit{owner: s, quotaUs: float64(quotaUs)}, nil
+}
+
+func (s cgroupV2Statter) cpuUsedUs() (int64, error) {
 	cpuStatPath := filepath.Join(s.path, cgroupV2CPUStat)
 
 	usageUs, err := readInt64Prefix(s.fs, cpuStatPath, "usage_usec")
 	if err != nil {
 		return 0, xerrors.Errorf("get cgroupv2 cpu used: %w", err)
 	}
-	periodUs, err := s.cpuPeriod()
-	if err != nil {
-		return 0, xerrors.Errorf("get cpu period: %w", err)
-	}
 
-	return float64(usageUs) / periodUs, nil
-}
-
-func (s cgroupV2Statter) cpuQuota() (float64, error) {
-	cpuMaxPath := filepath.Join(s.path, cgroupV2CPUMax)
-
-	quotaUs, err := readInt64SepIdx(s.fs, cpuMaxPath, " ", 0)
-	if err != nil {
-		if !errors.Is(err, strconv.ErrSyntax) && !errors.Is(err, fs.ErrNotExist) {
-			return 0, xerrors.Errorf("get cpu quota: %w", err)
-		}
-
-		// If the value is not a valid integer, assume it is the string
-		// 'max' and that there is no limit set. Try the parent or return -1.
-		return getFromParentOrFallback(&s, (*cgroupV2Statter).cpuQuota, func() (float64, error) {
-			return -1.0, nil
-		})
-	}
-
-	return float64(quotaUs), nil
+	return usageUs, nil
 }
 
 func (s cgroupV2Statter) cpuPeriod() (float64, error) {
@@ -148,12 +189,15 @@ func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
 		return 0, xerrors.Errorf("get cpu period: %w", err)
 	}
 
-	quotaUs, err := s.cpuQuota()
+	limit, err := s.cpuLimit()
 	if err != nil {
 		return 0, xerrors.Errorf("get cpu quota: %w", err)
 	}
+	if limit == nil {
+		return -1.0 / periodUs, nil
+	}
 
-	return quotaUs / periodUs, nil
+	return limit.quotaUs / periodUs, nil
 }
 
 func (s cgroupV2Statter) memoryMaxBytes() (*float64, error) {
