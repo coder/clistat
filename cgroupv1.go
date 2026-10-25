@@ -39,6 +39,15 @@ type cgroupV1Statter struct {
 	fs afero.Fs
 }
 
+func (s cgroupV1Statter) cpuCounters() ([]cpuCounter, error) {
+	total, err := s.cpuTotal()
+	if err != nil {
+		return nil, xerrors.Errorf("get total cpu: %w", err)
+	}
+
+	return []cpuCounter{{total: total, used: s.cpuUsed}}, nil
+}
+
 func (s cgroupV1Statter) cpuUsed() (used float64, err error) {
 	usageNs, err := readInt64(s.fs, cgroupV1CPUAcctUsage)
 	if err != nil {

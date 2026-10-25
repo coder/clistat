@@ -30,9 +30,18 @@ const (
 var errNotContainerized = errors.New("not containerized")
 
 type cgroupStatter interface {
-	cpuUsed() (used float64, err error)
-	cpuTotal() (total float64, err error)
+	cpuCounters() ([]cpuCounter, error)
 	memory(p Prefix) (*Result, error)
+}
+
+// cpuCounter is a cumulative CPU usage counter paired with the quota that
+// applies to it.
+type cpuCounter struct {
+	// total is the quota in cores. A value <= 0 means no quota.
+	total float64
+	// used returns the cumulative usage counter, in the same unit as total
+	// once the difference between two samples is taken.
+	used func() (float64, error)
 }
 
 func (s *Statter) getCgroupStatter() (cgroupStatter, error) {
@@ -60,21 +69,27 @@ func (s *Statter) getCgroupStatter() (cgroupStatter, error) {
 // This is calculated as difference of two samples of the
 // CPU usage of the container cgroup.
 // The total is read from the relevant path in /sys/fs/cgroup.
-// If there is no limit set, the total is assumed to be the
-// number of host cores multiplied by the CFS period.
+// On cgroup v2, every quota from the process's cgroup up to the container
+// root applies, so the one with the least room left is reported, with
+// usage read from the cgroup that sets it.
+// If there is no limit set, Total is nil.
 // If the system is not containerized, this always returns nil.
 func (s *Statter) ContainerCPU() (*Result, error) {
 	if s.cgroupStatter == nil {
 		return nil, nil //nolint: nilnil
 	}
 
-	total, err := s.cgroupStatter.cpuTotal()
+	counters, err := s.cgroupStatter.cpuCounters()
 	if err != nil {
-		return nil, xerrors.Errorf("get total cpu: %w", err)
+		return nil, xerrors.Errorf("get cpu counters: %w", err)
 	}
-	used1, err := s.cgroupStatter.cpuUsed()
-	if err != nil {
-		return nil, xerrors.Errorf("get cgroup CPU usage: %w", err)
+
+	first := make([]float64, len(counters))
+	for i, c := range counters {
+		first[i], err = c.used()
+		if err != nil {
+			return nil, xerrors.Errorf("get cgroup CPU usage: %w", err)
+		}
 	}
 
 	// The measurements in /sys/fs/cgroup are counters.
@@ -83,26 +98,44 @@ func (s *Statter) ContainerCPU() (*Result, error) {
 	// We can't do anything about that.
 	s.wait(s.sampleInterval)
 
-	used2, err := s.cgroupStatter.cpuUsed()
-	if err != nil {
-		return nil, xerrors.Errorf("get cgroup CPU usage: %w", err)
+	var (
+		best         *Result
+		bestHeadroom float64
+	)
+	for i, c := range counters {
+		used2, err := c.used()
+		if err != nil {
+			return nil, xerrors.Errorf("get cgroup CPU usage: %w", err)
+		}
+
+		used1 := first[i]
+		if used2 < used1 {
+			// Someone reset the counter. Best we can do is count from zero.
+			used1 = 0
+		}
+
+		r := &Result{
+			Unit:   "cores",
+			Used:   used2 - used1,
+			Prefix: PrefixDefault,
+		}
+		if c.total <= 0 {
+			if best == nil {
+				best = r
+			}
+			continue
+		}
+
+		// Ties go to the earlier counter, which is nearer to the process.
+		r.Total = ptr.To(c.total)
+		headroom := c.total - r.Used
+		if best == nil || best.Total == nil || headroom < bestHeadroom {
+			best = r
+			bestHeadroom = headroom
+		}
 	}
 
-	if used2 < used1 {
-		// Someone reset the counter. Best we can do is count from zero.
-		used1 = 0
-	}
-
-	r := &Result{
-		Unit:   "cores",
-		Used:   used2 - used1,
-		Prefix: PrefixDefault,
-	}
-
-	if total > 0 {
-		r.Total = ptr.To(total)
-	}
-	return r, nil
+	return best, nil
 }
 
 func (s *Statter) isCgroupV2() bool {
@@ -110,6 +143,9 @@ func (s *Statter) isCgroupV2() bool {
 }
 
 // ContainerMemory returns the memory usage of the container cgroup.
+// On cgroup v2, every memory.max from the process's cgroup up to the
+// container root applies, so the one with the least room left is
+// reported, with usage read from the cgroup that sets it.
 // If the system is not containerized, this always returns nil.
 func (s *Statter) ContainerMemory(p Prefix) (*Result, error) {
 	if s.cgroupStatter == nil {
