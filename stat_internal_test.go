@@ -418,6 +418,30 @@ func TestStatter(t *testing.T) {
 				assert.Equal(t, "cores", cpu.Unit)
 			})
 
+			t.Run("CPU/UsageFromLimitOwner", func(t *testing.T) {
+				t.Parallel()
+
+				fs := initFS(t, fsContainerCgroupV2DockerInDockerCPU)
+				fakeWait := func(time.Duration) {
+					// The nested container in /docker/<id> uses 4 cores'
+					// worth of CPU time, which is rolled up into the root.
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2CPUStat), "usage_usec 401000")
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, "init.scope", cgroupV2CPUStat), "usage_usec 1000")
+					mungeFS(t, fs, filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUStat), "usage_usec 400000")
+				}
+				s, err := New(WithFS(fs), withWait(fakeWait), withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
+
+				require.NotNil(t, cpu)
+				assert.Equal(t, 4.01, cpu.Used)
+				require.NotNil(t, cpu.Total)
+				assert.Equal(t, 12.0, *cpu.Total)
+				assert.Equal(t, "cores", cpu.Unit)
+			})
+
 			t.Run("CPU/InitScopeDefaultPeriod", func(t *testing.T) {
 				t.Parallel()
 
@@ -834,6 +858,26 @@ sysboxfs /proc/sys sysboxfs rw,nosuid,nodev,noexec,relatime 0 0`,
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryMaxBytes):   "max",
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryStat):       "inactive_file 268435456",
 		filepath.Join(cgroupRootPath, "init.scope", cgroupV2MemoryUsageBytes): "536870912",
+	}
+	// fsContainerCgroupV2DockerInDockerCPU simulates a docker-in-docker workspace.
+	// The agent runs in /init.scope and a nested container runs in the
+	// sibling /docker/<id>. Only the container root sets cpu.max, so usage
+	// must be read from the root to include both children.
+	fsContainerCgroupV2DockerInDockerCPU = map[string]string{
+		procOneCgroup:  "0::/init.scope",
+		procSelfCgroup: "0::/init.scope",
+		procMounts: `overlay / overlay rw,relatime,lowerdir=/some/path:/some/path,upperdir=/some/path:/some/path,workdir=/some/path:/some/path 0 0
+proc /proc/sys proc ro,nosuid,nodev,noexec,relatime 0 0`,
+		sysCgroupType: "domain",
+
+		filepath.Join(cgroupRootPath, cgroupV2CPUMax):  "1200000 100000",
+		filepath.Join(cgroupRootPath, cgroupV2CPUStat): "usage_usec 0",
+
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2CPUMax):  "max 100000",
+		filepath.Join(cgroupRootPath, "init.scope", cgroupV2CPUStat): "usage_usec 0",
+
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUMax):  "max 100000",
+		filepath.Join(cgroupRootPath, cgroupV2Path, cgroupV2CPUStat): "usage_usec 0",
 	}
 	// Variant where child has memory.stat but NOT memory.current (should inherit from root)
 	fsContainerCgroupV2KubernetesMissingMemoryCurrent = map[string]string{

@@ -88,7 +88,33 @@ func getFromParentOrFallback[T any](
 	return fallback()
 }
 
+// cpuUsed reads usage from the cgroup that owns the effective cpu.max so
+// that used and total describe the same domain. cpu.stat includes all
+// descendants, so this also counts sibling cgroups under the limit owner
+// (for example /docker/<id> next to /init.scope in docker-in-docker).
 func (s cgroupV2Statter) cpuUsed() (used float64, err error) {
+	owner, err := s.cpuQuotaOwner()
+	if err != nil {
+		return 0, xerrors.Errorf("get cpu quota owner: %w", err)
+	}
+
+	if owner != nil && owner.path != s.path {
+		if used, err := owner.cpuUsedOwn(); err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				return 0, xerrors.Errorf("read limit owner cpu: %w", err)
+			}
+			// The limit owner does not expose cpu.stat, so fall back to
+			// the process's own cgroup below.
+		} else {
+			return used, nil
+		}
+	}
+
+	return s.cpuUsedOwn()
+}
+
+// cpuUsedOwn reads usage from this cgroup's cpu.stat.
+func (s cgroupV2Statter) cpuUsedOwn() (used float64, err error) {
 	cpuStatPath := filepath.Join(s.path, cgroupV2CPUStat)
 
 	usageUs, err := readInt64Prefix(s.fs, cpuStatPath, "usage_usec")
@@ -120,6 +146,24 @@ func (s cgroupV2Statter) cpuQuota() (float64, error) {
 	}
 
 	return float64(quotaUs), nil
+}
+
+// cpuQuotaOwner returns the nearest cgroup, starting at s and walking up,
+// whose cpu.max sets a quota. It returns nil when no cgroup sets one.
+func (s *cgroupV2Statter) cpuQuotaOwner() (*cgroupV2Statter, error) {
+	cpuMaxPath := filepath.Join(s.path, cgroupV2CPUMax)
+
+	if _, err := readInt64SepIdx(s.fs, cpuMaxPath, " ", 0); err != nil {
+		if !errors.Is(err, strconv.ErrSyntax) && !errors.Is(err, fs.ErrNotExist) {
+			return nil, xerrors.Errorf("get cpu quota: %w", err)
+		}
+
+		return getFromParentOrFallback(s, (*cgroupV2Statter).cpuQuotaOwner, func() (*cgroupV2Statter, error) {
+			return nil, nil
+		})
+	}
+
+	return s, nil
 }
 
 func (s cgroupV2Statter) cpuPeriod() (float64, error) {
