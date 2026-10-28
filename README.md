@@ -105,6 +105,45 @@ Container CPU: 0.5/2.5 cores (20%)
 Container Memory: 256/1024 MiB (25%)
 ```
 
+## How container limits are reported
+
+On cgroup v2, a container's cgroup can have child cgroups. For example, in a
+docker-in-docker workspace the process runs in `/init.scope` and nested
+containers run in `/docker/<id>`. Limits can be set at any level, and the
+kernel enforces every limit from the process's cgroup up to the container root.
+
+`ContainerCPU` and `ContainerMemory` handle this as follows:
+
+1. Check each cgroup from the process's cgroup up to the container root for a
+   limit (`cpu.max` for CPU, `memory.max` for memory).
+1. For each limit found, read usage from the same cgroup that sets it. This
+   usage includes every cgroup below it, so processes that share the limit
+   are counted.
+   - CPU: the change in `usage_usec` from `cpu.stat` over the sample interval.
+   - Memory: `memory.current` minus `inactive_file` from `memory.stat`.
+1. Report the limit with the least room left (limit minus usage), since that
+   is the one that will be hit first. If two limits have the same room left,
+   the one nearest to the process is reported.
+1. If no cgroup sets a limit, report usage of the process's own cgroup with
+   no total.
+
+If a cgroup sets a limit but does not have the usage files, usage of the
+process's own cgroup is used for that limit.
+
+Only one limit is reported. The result answers "how close is this process to
+being throttled or killed," not "what are all the limits."
+
+### Limits outside the container
+
+clistat can only see cgroups inside the container's cgroup namespace. Limits
+set above the container root are not visible. For example, a Kubernetes
+pod-level limit is not visible from inside a container that has its own
+cgroup namespace. If such a limit is tighter than the container's own limit,
+clistat reports the container's limit.
+
+On cgroup v1, clistat reads the limit and usage from the container's own
+cgroup only.
+
 ## Testing
 
 The library includes a comprehensive test suite that can be run with:

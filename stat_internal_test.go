@@ -522,6 +522,169 @@ func TestStatter(t *testing.T) {
 				assert.Equal(t, "B", mem.Unit)
 			})
 		})
+
+		t.Run("NestedLimits", func(t *testing.T) {
+			t.Parallel()
+
+			// The process runs in /init.scope. A sibling /docker/<id>
+			// shares the container root's limits.
+			const (
+				mib    = 1 << 20
+				gib    = 1 << 30
+				docker = "docker/aa86ac98959eeedeae0ecb6e0c9ddd8ae8b97a9d0fdccccf7ea7a474f4e0bb1f"
+			)
+			root := cgroupRootPath
+			initScope := filepath.Join(cgroupRootPath, "init.scope")
+			sibling := filepath.Join(cgroupRootPath, docker)
+
+			memoryFS := func(t *testing.T, initScopeMax string, rootUsed, initScopeUsed int64) afero.Fs {
+				t.Helper()
+				return initFS(t, map[string]string{
+					procOneCgroup:  "0::/init.scope",
+					procSelfCgroup: "0::/init.scope",
+					procMounts:     fsContainerCgroupV2[procMounts],
+					sysCgroupType:  "domain",
+
+					filepath.Join(root, cgroupV2MemoryMaxBytes):        strconv.Itoa(gib),
+					filepath.Join(root, cgroupV2MemoryUsageBytes):      strconv.FormatInt(rootUsed, 10),
+					filepath.Join(root, cgroupV2MemoryStat):            "inactive_file 0",
+					filepath.Join(initScope, cgroupV2MemoryMaxBytes):   initScopeMax,
+					filepath.Join(initScope, cgroupV2MemoryUsageBytes): strconv.FormatInt(initScopeUsed, 10),
+					filepath.Join(initScope, cgroupV2MemoryStat):       "inactive_file 0",
+					filepath.Join(sibling, cgroupV2MemoryMaxBytes):     "max",
+					filepath.Join(sibling, cgroupV2MemoryUsageBytes):   strconv.FormatInt(rootUsed-initScopeUsed, 10),
+					filepath.Join(sibling, cgroupV2MemoryStat):         "inactive_file 0",
+				})
+			}
+
+			cpuFS := func(t *testing.T, initScopeMax string) afero.Fs {
+				t.Helper()
+				return initFS(t, map[string]string{
+					procOneCgroup:  "0::/init.scope",
+					procSelfCgroup: "0::/init.scope",
+					procMounts:     fsContainerCgroupV2[procMounts],
+					sysCgroupType:  "domain",
+
+					filepath.Join(root, cgroupV2CPUMax):       "200000 100000",
+					filepath.Join(root, cgroupV2CPUStat):      "usage_usec 0",
+					filepath.Join(initScope, cgroupV2CPUMax):  initScopeMax,
+					filepath.Join(initScope, cgroupV2CPUStat): "usage_usec 0",
+					filepath.Join(sibling, cgroupV2CPUMax):    "max 100000",
+					filepath.Join(sibling, cgroupV2CPUStat):   "usage_usec 0",
+				})
+			}
+
+			// sampleCPU makes /init.scope use initScopeUs and the sibling
+			// use siblingUs during the sample interval.
+			sampleCPU := func(t *testing.T, fs afero.Fs, initScopeUs, siblingUs int64) func(time.Duration) {
+				return func(time.Duration) {
+					mungeFS(t, fs, filepath.Join(root, cgroupV2CPUStat), fmt.Sprintf("usage_usec %d", initScopeUs+siblingUs))
+					mungeFS(t, fs, filepath.Join(initScope, cgroupV2CPUStat), fmt.Sprintf("usage_usec %d", initScopeUs))
+					mungeFS(t, fs, filepath.Join(sibling, cgroupV2CPUStat), fmt.Sprintf("usage_usec %d", siblingUs))
+				}
+			}
+
+			t.Run("Memory/UsageFromLimitOwner", func(t *testing.T) {
+				t.Parallel()
+
+				// Only the root sets a limit. Usage must include the sibling.
+				fs := memoryFS(t, "max", 850*mib, 10*mib)
+				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				mem, err := s.ContainerMemory(PrefixDefault)
+				require.NoError(t, err)
+				require.NotNil(t, mem)
+				assert.Equal(t, float64(850*mib), mem.Used)
+				require.NotNil(t, mem.Total)
+				assert.Equal(t, float64(gib), *mem.Total)
+			})
+
+			t.Run("Memory/AncestorLimitHitFirst", func(t *testing.T) {
+				t.Parallel()
+
+				// /init.scope has a 600 MiB limit and uses 10 MiB, but the
+				// sibling has used most of the root's 1 GiB. The root has
+				// less room left, so it is reported.
+				fs := memoryFS(t, strconv.Itoa(600*mib), 860*mib, 10*mib)
+				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				mem, err := s.ContainerMemory(PrefixDefault)
+				require.NoError(t, err)
+				require.NotNil(t, mem)
+				assert.Equal(t, float64(860*mib), mem.Used)
+				require.NotNil(t, mem.Total)
+				assert.Equal(t, float64(gib), *mem.Total)
+			})
+
+			t.Run("Memory/NearestLimitHitFirst", func(t *testing.T) {
+				t.Parallel()
+
+				// /init.scope uses 550 of its 600 MiB, while the root has
+				// 400 MiB left. /init.scope has less room, so it is reported.
+				fs := memoryFS(t, strconv.Itoa(600*mib), 624*mib, 550*mib)
+				s, err := New(WithFS(fs), withNoWait, withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				mem, err := s.ContainerMemory(PrefixDefault)
+				require.NoError(t, err)
+				require.NotNil(t, mem)
+				assert.Equal(t, float64(550*mib), mem.Used)
+				require.NotNil(t, mem.Total)
+				assert.Equal(t, float64(600*mib), *mem.Total)
+			})
+
+			t.Run("CPU/UsageFromLimitOwner", func(t *testing.T) {
+				t.Parallel()
+
+				// Only the root sets a quota. Usage must include the sibling.
+				fs := cpuFS(t, "max 100000")
+				s, err := New(WithFS(fs), withWait(sampleCPU(t, fs, 1000, 150000)), withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
+				require.NotNil(t, cpu)
+				assert.Equal(t, 1.51, cpu.Used)
+				require.NotNil(t, cpu.Total)
+				assert.Equal(t, 2.0, *cpu.Total)
+			})
+
+			t.Run("CPU/AncestorLimitHitFirst", func(t *testing.T) {
+				t.Parallel()
+
+				// /init.scope has a 1.5 core quota and uses 0.01, but the
+				// sibling uses 1.8 of the root's 2 cores.
+				fs := cpuFS(t, "150000 100000")
+				s, err := New(WithFS(fs), withWait(sampleCPU(t, fs, 1000, 180000)), withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
+				require.NotNil(t, cpu)
+				assert.Equal(t, 1.81, cpu.Used)
+				require.NotNil(t, cpu.Total)
+				assert.Equal(t, 2.0, *cpu.Total)
+			})
+
+			t.Run("CPU/NearestLimitHitFirst", func(t *testing.T) {
+				t.Parallel()
+
+				// /init.scope uses 1.4 of its 1.5 cores, while the root
+				// has 0.5 cores left. /init.scope has less room.
+				fs := cpuFS(t, "150000 100000")
+				s, err := New(WithFS(fs), withWait(sampleCPU(t, fs, 140000, 10000)), withIsCgroupV2(true))
+				require.NoError(t, err)
+
+				cpu, err := s.ContainerCPU()
+				require.NoError(t, err)
+				require.NotNil(t, cpu)
+				assert.Equal(t, 1.4, cpu.Used)
+				require.NotNil(t, cpu.Total)
+				assert.Equal(t, 1.5, *cpu.Total)
+			})
+		})
 	})
 }
 

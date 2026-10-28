@@ -88,38 +88,103 @@ func getFromParentOrFallback[T any](
 	return fallback()
 }
 
-func (s cgroupV2Statter) cpuUsed() (used float64, err error) {
+// cpuCounters returns one counter for every cgroup, from s up to the
+// root, whose cpu.max sets a quota. The kernel enforces each of these
+// quotas, so the caller reports whichever has the least room left.
+//
+// Each counter reads usage from the cgroup that sets the quota. cpu.stat
+// includes all descendants, so this counts sibling cgroups that share the
+// quota (for example /docker/<id> next to /init.scope in docker-in-docker).
+//
+// If no cgroup sets a quota, it returns a single unlimited counter for s.
+func (s cgroupV2Statter) cpuCounters() ([]cpuCounter, error) {
+	var counters []cpuCounter
+	for c := &s; c != nil; c = c.parent {
+		quotaUs, periodUs, ok, err := c.cpuMaxLocal()
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+
+		counters = append(counters, cpuCounter{
+			total: quotaUs / periodUs,
+			used: func() (float64, error) {
+				usageUs, err := s.cpuUsageUsAt(c)
+				if err != nil {
+					return 0, err
+				}
+				return float64(usageUs) / periodUs, nil
+			},
+		})
+	}
+	if len(counters) > 0 {
+		return counters, nil
+	}
+
+	periodUs, err := s.cpuPeriod()
+	if err != nil {
+		return nil, xerrors.Errorf("get cpu period: %w", err)
+	}
+
+	return []cpuCounter{{
+		used: func() (float64, error) {
+			usageUs, err := s.cpuUsageUsLocal()
+			if err != nil {
+				return 0, err
+			}
+			return float64(usageUs) / periodUs, nil
+		},
+	}}, nil
+}
+
+// cpuMaxLocal reads this cgroup's own cpu.max. ok is false when the file
+// does not exist or the quota is "max".
+func (s cgroupV2Statter) cpuMaxLocal() (quotaUs, periodUs float64, ok bool, err error) {
+	cpuMaxPath := filepath.Join(s.path, cgroupV2CPUMax)
+
+	quota, err := readInt64SepIdx(s.fs, cpuMaxPath, " ", 0)
+	if err != nil {
+		if !errors.Is(err, strconv.ErrSyntax) && !errors.Is(err, fs.ErrNotExist) {
+			return 0, 0, false, xerrors.Errorf("get cpu quota: %w", err)
+		}
+		return 0, 0, false, nil
+	}
+
+	period, err := readInt64SepIdx(s.fs, cpuMaxPath, " ", 1)
+	if err != nil {
+		return 0, 0, false, xerrors.Errorf("get cpu period: %w", err)
+	}
+
+	return float64(quota), float64(period), true, nil
+}
+
+// cpuUsageUsAt returns usage_usec for the quota set on c. If c does not
+// expose cpu.stat, it falls back to the process's own cgroup.
+func (s cgroupV2Statter) cpuUsageUsAt(c *cgroupV2Statter) (int64, error) {
+	if usageUs, err := c.cpuUsageUsLocal(); err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return 0, xerrors.Errorf("read limit owner cpu: %w", err)
+		}
+		// The limit owner does not expose cpu.stat, so fall back to the
+		// process's own cgroup below.
+	} else {
+		return usageUs, nil
+	}
+
+	return s.cpuUsageUsLocal()
+}
+
+func (s cgroupV2Statter) cpuUsageUsLocal() (int64, error) {
 	cpuStatPath := filepath.Join(s.path, cgroupV2CPUStat)
 
 	usageUs, err := readInt64Prefix(s.fs, cpuStatPath, "usage_usec")
 	if err != nil {
 		return 0, xerrors.Errorf("get cgroupv2 cpu used: %w", err)
 	}
-	periodUs, err := s.cpuPeriod()
-	if err != nil {
-		return 0, xerrors.Errorf("get cpu period: %w", err)
-	}
 
-	return float64(usageUs) / periodUs, nil
-}
-
-func (s cgroupV2Statter) cpuQuota() (float64, error) {
-	cpuMaxPath := filepath.Join(s.path, cgroupV2CPUMax)
-
-	quotaUs, err := readInt64SepIdx(s.fs, cpuMaxPath, " ", 0)
-	if err != nil {
-		if !errors.Is(err, strconv.ErrSyntax) && !errors.Is(err, fs.ErrNotExist) {
-			return 0, xerrors.Errorf("get cpu quota: %w", err)
-		}
-
-		// If the value is not a valid integer, assume it is the string
-		// 'max' and that there is no limit set. Try the parent or return -1.
-		return getFromParentOrFallback(&s, (*cgroupV2Statter).cpuQuota, func() (float64, error) {
-			return -1.0, nil
-		})
-	}
-
-	return float64(quotaUs), nil
+	return usageUs, nil
 }
 
 func (s cgroupV2Statter) cpuPeriod() (float64, error) {
@@ -142,38 +207,73 @@ func (s cgroupV2Statter) cpuPeriod() (float64, error) {
 	return float64(periodUs), nil
 }
 
-func (s cgroupV2Statter) cpuTotal() (total float64, err error) {
-	periodUs, err := s.cpuPeriod()
-	if err != nil {
-		return 0, xerrors.Errorf("get cpu period: %w", err)
-	}
-
-	quotaUs, err := s.cpuQuota()
-	if err != nil {
-		return 0, xerrors.Errorf("get cpu quota: %w", err)
-	}
-
-	return quotaUs / periodUs, nil
-}
-
-func (s cgroupV2Statter) memoryMaxBytes() (*float64, error) {
+// memoryMaxLocal reads this cgroup's own memory.max. ok is false when the
+// file does not exist or the value is "max".
+func (s cgroupV2Statter) memoryMaxLocal() (maxBytes float64, ok bool, err error) {
 	memoryMaxPath := filepath.Join(s.path, cgroupV2MemoryMaxBytes)
 
 	maxUsageBytes, err := readInt64(s.fs, memoryMaxPath)
 	if err != nil {
 		if !errors.Is(err, strconv.ErrSyntax) && !errors.Is(err, fs.ErrNotExist) {
-			return nil, xerrors.Errorf("read memory total: %w", err)
+			return 0, false, xerrors.Errorf("read memory total: %w", err)
 		}
-
-		// If the value is not a valid integer _or_ the memory max file
-		// does not exist, we can assume that the limit is 'max'.
-		// Try the parent or return nil (no limit).
-		return getFromParentOrFallback(&s, (*cgroupV2Statter).memoryMaxBytes, func() (*float64, error) {
-			return nil, nil
-		})
+		return 0, false, nil
 	}
 
-	return ptr.To(float64(maxUsageBytes)), nil
+	return float64(maxUsageBytes), true, nil
+}
+
+// memoryUsedAt returns memory.current minus inactive_file for the limit
+// set on c. memory.current includes all descendants, so this counts
+// sibling cgroups that share the limit. If c does not expose these files,
+// it falls back to the process's own cgroup.
+func (s cgroupV2Statter) memoryUsedAt(c *cgroupV2Statter) (float64, error) {
+	if used, err := c.memoryUsedLocal(); err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return 0, xerrors.Errorf("read limit owner memory: %w", err)
+		}
+		// The limit owner does not expose usage files, so fall back to
+		// the process's own cgroup below.
+	} else {
+		return float64(used), nil
+	}
+
+	used, err := s.memoryUsed()
+	if err != nil {
+		return 0, err
+	}
+	return float64(used), nil
+}
+
+// memoryUsedLocal reads usage from this cgroup's own files only.
+func (s cgroupV2Statter) memoryUsedLocal() (int64, error) {
+	currUsageBytes, err := readInt64(s.fs, filepath.Join(s.path, cgroupV2MemoryUsageBytes))
+	if err != nil {
+		return 0, xerrors.Errorf("read memory current: %w", err)
+	}
+
+	inactiveFileBytes, err := readInt64Prefix(s.fs, filepath.Join(s.path, cgroupV2MemoryStat), "inactive_file")
+	if err != nil {
+		return 0, xerrors.Errorf("read memory stat inactive_file: %w", err)
+	}
+
+	return currUsageBytes - inactiveFileBytes, nil
+}
+
+// memoryUsed reads usage for this cgroup, taking each file from the
+// nearest cgroup that has it.
+func (s cgroupV2Statter) memoryUsed() (int64, error) {
+	currUsageBytes, err := s.memoryCurrentBytes()
+	if err != nil {
+		return 0, xerrors.Errorf("read memory usage: %w", err)
+	}
+
+	inactiveFileBytes, err := s.memoryInactiveFileBytes()
+	if err != nil {
+		return 0, xerrors.Errorf("read memory stats: %w", err)
+	}
+
+	return currUsageBytes - inactiveFileBytes, nil
 }
 
 func (s cgroupV2Statter) memoryCurrentBytes() (int64, error) {
@@ -218,22 +318,41 @@ func (s cgroupV2Statter) memory(p Prefix) (*Result, error) {
 		Unit:   "B",
 		Prefix: p,
 	}
-	if total, err := s.memoryMaxBytes(); err != nil {
-		return nil, xerrors.Errorf("read memory total: %w", err)
-	} else {
-		r.Total = total
+
+	// The kernel charges memory to every cgroup from s up to the root and
+	// fails the allocation if any of them is over its memory.max. Report
+	// the limit with the least room left, since that one is hit first.
+	// Ties go to the cgroup nearest to s.
+	var headroom float64
+	for c := &s; c != nil; c = c.parent {
+		limit, ok, err := c.memoryMaxLocal()
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+
+		used, err := s.memoryUsedAt(c)
+		if err != nil {
+			return nil, err
+		}
+
+		if r.Total == nil || limit-used < headroom {
+			r.Total = ptr.To(limit)
+			r.Used = used
+			headroom = limit - used
+		}
+	}
+	if r.Total != nil {
+		return r, nil
 	}
 
-	currUsageBytes, err := s.memoryCurrentBytes()
+	used, err := s.memoryUsed()
 	if err != nil {
-		return nil, xerrors.Errorf("read memory usage: %w", err)
+		return nil, err
 	}
 
-	inactiveFileBytes, err := s.memoryInactiveFileBytes()
-	if err != nil {
-		return nil, xerrors.Errorf("read memory stats: %w", err)
-	}
-
-	r.Used = float64(currUsageBytes - inactiveFileBytes)
+	r.Used = float64(used)
 	return r, nil
 }
